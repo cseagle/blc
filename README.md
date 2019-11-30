@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This is the blc (Binary Lifting Component) plugin for IDA Pro. It is the Bastard
+This is the blc (Binary Lifting Contraption) plugin for IDA Pro. It is the Bastard
 love child of Ghidra's decompiler with Ida Pro.
 
 The plugin integrates Ghidra's decompiler code into an Ida plugin an provides a 
