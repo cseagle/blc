@@ -612,63 +612,75 @@ uint64_t get_func_start(void *func) {
    return f->start_ea;
 }
 
-void map_ghidra_to_ida(Decompiled *dec) {
+//Create a Ghidra to Ida name mapping for a single loval variable (including formal parameters)
+void map_var_from_decl(Decompiled *dec, VarDecl *decl) {
    Function *ast = dec->ast;
-   int index = 0;
    func_t *func = dec->ida_func;
    struc_t *frame = get_frame(func);
-   vector<Statement*> &bk = ast->block.block;
    ea_t ra = frame_off_retaddr(func);
-//   msg("   return address at 0x%zx\n", ra);
+   const string gname = decl->getName();
+   size_t stack = gname.find("Stack");
+   LocalVar *lv = new LocalVar(gname, gname);  //default current name will be ghidra name
+   if (stack != string::npos) {         //if it's a stack var, change current to ida name
+      uint32_t stackoff = strtoul(&gname[stack + 5], NULL, 0);
+      member_t *var = get_member(frame, ra - stackoff);
+      lv->offset = ra - stackoff;
+      if (var) {                        //now we know there's an ida name assigned
+         qstring iname;
+         get_member_name(&iname, var->id);
+         ast->rename(gname, iname.c_str());
+         dec->locals[iname.c_str()] = lv;
+         lv->current_name = iname.c_str();
+      }
+      else {  //ghidra says there's a variable here, let's name it in ida
+         //TODO - need to compute sizeof(decl) to properly create
+         //       the new data member
+         qstring iname;
+         iname.sprnt("var_%X", stackoff - func->frregs);
+         if (add_struc_member(frame, iname.c_str(), ra - stackoff, byte_flag(), NULL, 1) == 0) {
+            ast->rename(gname, iname.c_str());
+            dec->locals[iname.c_str()] = lv;
+            lv->current_name = iname.c_str();
+         }
+         else {
+            dec->locals[gname] = lv;
+         }
+      }
+   }
+   else {  //handle non-stack (register) local variables
+      netnode nn(dec->ida_func->start_ea);
+      qstring iname;
+      if (nn.hashstr(&iname, gname.c_str()) <= 0) {
+         //no existing mapping
+         dec->locals[gname] = lv;
+      }
+      else {
+         //we already have a mapping for this ghidra variable
+         ast->rename(gname, iname.c_str());
+         dec->locals[iname.c_str()] = lv;
+         lv->current_name = iname.c_str();
+      }
+   }
+}
+
+void map_ghidra_to_ida(Decompiled *dec) {
+   Function *ast = dec->ast;
+   vector<Statement*> &bk = ast->block.block;
+   vector<VarDecl*> &parms = ast->prototype.parameters;
+
+   //add mappings for formal parameter names
+   for (vector<VarDecl*>::iterator i = parms.begin(); i != parms.end(); i++) {
+      VarDecl *decl = *i;
+      map_var_from_decl(dec, decl);
+   }
+
+   //add mappings for variable names
    for (vector<Statement*>::iterator i = bk.begin(); i != bk.end(); i++) {
       VarDecl *decl = dynamic_cast<VarDecl*>(*i);
       if (decl) {
-         const string gname = decl->getName();
-         size_t stack = gname.find("Stack");
-         LocalVar *lv = new LocalVar(gname, gname);  //default current name will be ghidra name
-         if (stack != string::npos) {         //if it's a stack var, change current to ida name
-            uint32_t stackoff = strtoul(&gname[stack + 5], NULL, 0);
-            member_t *var = get_member(frame, ra - stackoff);
-            lv->offset = ra - stackoff;
-            if (var) {                        //now we know there's an ida name assigned
-               qstring iname;
-               get_member_name(&iname, var->id);
-               ast->rename(gname, iname.c_str());
-               dec->locals[iname.c_str()] = lv;
-               lv->current_name = iname.c_str();
-            }
-            else {  //ghidra says there's a variable here, let's name it in ida
-               //TODO - need to compute sizeof(decl) to properly create
-               //       the new data member
-               qstring iname;
-               iname.sprnt("var_%X", stackoff - func->frregs);
-               if (add_struc_member(frame, iname.c_str(), ra - stackoff, byte_flag(), NULL, 1) == 0) {
-                  ast->rename(gname, iname.c_str());
-                  dec->locals[iname.c_str()] = lv;
-                  lv->current_name = iname.c_str();
-               }
-               else {
-                  dec->locals[gname] = lv;
-               }
-            }
-         }
-         else {
-            netnode nn(dec->ida_func->start_ea);
-            qstring iname;
-            if (nn.hashstr(&iname, gname.c_str()) <= 0) {
-               //no existing mapping
-               dec->locals[gname] = lv;
-            }
-            else {
-               //we already have a mapping for this ghidra variable
-               ast->rename(gname, iname.c_str());
-               dec->locals[iname.c_str()] = lv;
-               lv->current_name = iname.c_str();
-            }
-         }
+         map_var_from_decl(dec, decl);
       }
       else {
-         //no more decls
          break;
       }
    }
