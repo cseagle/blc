@@ -249,12 +249,12 @@ void AstItem::color_off(char tag) {
 
 void AstItem::append(const char *v) {
    append(string(v));
-}  
+}
 
 void AstItem::append(const string &v) {
    line.append(v);
    line_index += v.length();
-}  
+}
 
 void AstItem::append_colored(char tag, const char *v) {
    append_colored(tag, string(v));
@@ -541,7 +541,7 @@ const string &VarDecl::getName() {
       }
       dmsg("VarDecl unexpected expr type\n");
       return empty_string;
-   }   
+   }
 }
 
 void VarDecl::rename(const string &oldname, const string &newname) {
@@ -1693,7 +1693,7 @@ void init_maps(void) {
       reserved.insert(GOTO);
       reserved.insert(RETURN);
       reserved.insert("for");
-      
+
       reserved.insert("int");
       reserved.insert("bool");
       reserved.insert("char");
@@ -1712,14 +1712,14 @@ bool is_reserved(const string &word) {
    return reserved.find(word) != reserved.end();
 }
 
-Function *func_from_xml(Element *func) {
+Function *func_from_xml(Element *func, uint64_t addr) {
    init_maps();
    int num_decls = 0;
    int num_blocks = 0;
    if (func->getName() != "function") {
       return NULL;
    }
-   Function *result = new Function();
+   Function *result = new Function(addr);
    bool have_proto = false;
    const List &children = func->getChildren();
    for (List::const_iterator it = children.begin(); it < children.end(); it++) {

@@ -37,6 +37,13 @@ using std::vector;
 extern string ghidra_dir;
 //extern int blc_index;
 
+typedef void (*arch_setup_t)(uint64_t start, uint64_t end);
+typedef map<int,arch_setup_t> arch_map_t;
+
+extern arch_map_t arch_map;
+
+int get_proc_id();
+
 void init_ida_ghidra();
 
 void get_ida_bytes(uint8_t *buf, uint64_t size, uint64_t ea);
@@ -55,7 +62,10 @@ bool does_func_return(/*func_t*/ void *f);
 
 uint64_t get_func_start(/*func_t*/ void *f);
 
-int do_decompile(uint64_t ea, Function **ast);
+uint64_t get_func_start(uint64_t ea);
+uint64_t get_func_end(uint64_t ea);
+
+int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **ast);
 
 const char *tag_remove(const char *tagged);
 
@@ -78,6 +88,8 @@ bool is_extern(const string &name);
 bool is_library_func(const string &name);
 
 bool is_named_addr(uint64_t ea, string &name);
+
+void mips_setup(uint64_t start, uint64_t end);
 
 #endif
 

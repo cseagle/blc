@@ -66,7 +66,7 @@ void escape_value(const string &value, string &res) {
          res += *content;
       }
       content++;
-   }   
+   }
 }
 
 void dump_el(const Element *el, int indent, string &res) {
@@ -75,7 +75,7 @@ void dump_el(const Element *el, int indent, string &res) {
    int clen = el->getContent().length();
 
    int nattr = el->getNumAttributes();
-   
+
    res.append(indent, ' ');
    res.push_back('<');
    res += el->getName();
@@ -141,9 +141,33 @@ void check_err_stream() {
    }
 }
 
+TrackedSet &get_tracked_set(uint64_t start, uint64_t end) {
+   //need to add a TrackedSet to arch->context(which is a ContextInternal for us)->trackbase
+   //if we are tracking any registers. In particular, if any registers are fixed on entry
+   //we should add them to the TrackedSet for ea. This is probabaly more useful for some archs
+   //than others.
+   AddrSpace *ram = arch->getSpaceByName("ram");
+   Address func_begin(ram, start);
+   Address func_end(ram, end);
+   return arch->context->createSet(func_begin, func_end);
+}
+
+void mips_setup(uint64_t start, uint64_t end) {
+   TrackedSet &regs = get_tracked_set(start, end);
+   regs.push_back(TrackedContext());
+   TrackedContext back = regs.back();
+   AddrSpace *register_space = arch->getSpaceByName("register");
+   back.loc.space = register_space;
+
+   //this is very n64 specific
+   back.loc.offset = 0xc8;  // this is $t9 - need to do this better
+   back.loc.size = 8;
+   back.val = start;
+}
+
 int idaapi blc_init(void) {
    //init_query_handlers();
-   
+
    //do ida related init
    init_ida_ghidra();
 
@@ -168,8 +192,12 @@ int idaapi blc_init(void) {
    string errmsg;
    bool iserror = false;
    try {
-      arch->init(store);      
-      
+      arch->init(store);
+      //at this point we have arch->context (a ContextInternal) available
+      // we can do things like:
+      // context->setVariableDefault("addrsize",1);  // Address size is 32-bits
+      // context->setVariableDefault("opsize",1);    // Operand size is 32-bits
+      // that make sense for our architecture
    } catch(XmlError &err) {
       errmsg = err.explain;
       iserror = true;
@@ -204,30 +232,36 @@ void idaapi blc_term(void) {
 // This also builds the internal register map while it walks the sleigh spec.
 
 // see IfcDecompile::execute
-int do_decompile(uint64_t ea, Function **result) { //, string &xml, string &cfunc) {
+int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
    Scope *global = arch->symboltab->getGlobalScope();
-   Address addr(arch->getDefaultSpace(), ea);
+   Address addr(arch->getDefaultSpace(), start_ea);
    Funcdata *fd = global->findFunction(addr);
    *result = NULL;
-   
+
    if (strncmp("ARM", sleigh_id.c_str(), 3) == 0) {
       //if ARM check for and set thumb ranges
-      if (is_thumb_mode(ea)) {
+      if (is_thumb_mode(start_ea)) {
          arch->context->setVariable("TMode", addr, 1);
       }
    }
-   
+
    int4 res = -1;
    if (fd) {
       string xml;
       string c_code;
-      
+
       string func_name;
-      get_func_name(func_name, ea);
+      get_func_name(func_name, start_ea);
 
 //      msg("Decompiling %s\n", func_name.c_str());
 
       arch->clearAnalysis(fd); // Clear any old analysis
+
+      arch_map_t::iterator setup = arch_map.find(get_proc_id());
+      if (setup != arch_map.end()) {
+//         (*setup->second)(start_ea, end_ea);
+      }
+
       arch->allacts.getCurrent()->reset(*fd);
 
       res = arch->allacts.getCurrent()->perform(*fd);
@@ -265,8 +299,8 @@ int do_decompile(uint64_t ea, Function **result) { //, string &xml, string &cfun
             dump_el(doc->getRoot(), 0, pretty);
             msg("%s\n", pretty.c_str());
 
-            *result = func_from_xml(doc->getRoot());
-            msg("%s\n", c_code.c_str());       
+            *result = func_from_xml(doc->getRoot(), start_ea);
+            msg("%s\n", c_code.c_str());
          }
       }
       check_err_stream();

@@ -81,7 +81,7 @@ or `<idadir>/idabin/plugins` (OS X).
 The plugin is dependent on Ghira processor specifications which you will need to
 copy over from your own Ghidra installation. Installing Ghidra is a simple matter
 of unzipping the latest Ghidra release, for example: https://ghidra-sre.org/ghidra_9.1_PUBLIC_20191023.zip
-Within the extracted Ghidra foler, you will find a `Ghidra` subdirectory which,
+Within the extracted Ghidra folder, you will find a `Ghidra` subdirectory which,
 in turn, contains a `Processors` subdirectory. The decompiler needs access to
 files contained under `Ghidra/Processors`. By default the plugin looks for the 
 environment variable `$GHIDRA_DIR` which it expects to point at your Ghidra

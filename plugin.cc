@@ -103,6 +103,8 @@ static map<TWidget*,string> views;
 static map<TWidget*,Decompiled*> function_map;
 static set<string> titles;
 
+arch_map_t arch_map;
+
 static string get_available_title() {
    string title("A");
    while (titles.find(title) != titles.end()) {
@@ -147,12 +149,12 @@ static bool get_current_word(TWidget *v, bool mouse, qstring &word) {
    while ((qisalnum(*end) || *end == '_') && *end != '\0') {
       end++;
    }
-   
+
    if (end == ptr) {
       return false;
    }
-   
-   // find the beginning of the word   
+
+   // find the beginning of the word
    while (ptr > buf.begin() && (qisalnum(ptr[-1]) || ptr[-1] == '_')) {
       ptr--;
    }
@@ -377,7 +379,7 @@ int do_ida_rename(qstring &name, ea_t func) {
       //somehow the original name is invalid
       msg("rename: %s has no addr\n", name.c_str());
       return -1;
-   } 
+   }
    qstring orig = name;
    bool res = ask_str(&name, HIST_IDENT, "Please enter item name");
    if (res && name != orig) {
@@ -386,7 +388,7 @@ int do_ida_rename(qstring &name, ea_t func) {
          //new name is same as existing name
          msg("rename: new name already in use\n", name.c_str());
          return 0;
-      } 
+      }
       msg("Custom rename: %s at adddress 0x%zx\n", name.c_str(), name_ea);
       res = set_name(name_ea, name.c_str());
       return res ? 2 : 3;
@@ -419,7 +421,9 @@ void init_ida_ghidra() {
       ghidra_dir = idadir("plugins");
    }
    find_ida_name_dialog();
-   
+
+   arch_map[PLFM_MIPS] = mips_setup;
+
    proc_map[PLFM_6502] = "6502";
    proc_map[PLFM_68K] = "68000";
    proc_map[PLFM_6800] = "6805";
@@ -514,6 +518,10 @@ filetype_t inf_get_filetype() {
 
 #endif
 
+int get_proc_id() {
+   return ph.id;
+}
+
 bool get_sleigh_id(string &sleigh) {
    sleigh.clear();
    map<int,string>::iterator proc = proc_map.find(ph.id);
@@ -527,21 +535,24 @@ bool get_sleigh_id(string &sleigh) {
    filetype_t ftype = inf_get_filetype();
 
    sleigh = proc->second + (is_be ? ":BE" : ":LE");
-   
+
    switch (ph.id) {
       case PLFM_6502:
-         sleigh += ":8:default";
+         sleigh += ":16:default";
          break;
       case PLFM_68K:
-         sleigh += ":16:default";
+         //options include "default" "MC68030" "MC68020" "Coldfire"
+         sleigh += ":32:default";
          break;
       case PLFM_6800:
          sleigh += ":8:default";
          break;
       case PLFM_8051:
-         sleigh += ":8:default";
+         sleigh += ":16:default";
          break;
       case PLFM_ARM:
+         //options include "v8" "v8T" "v8LEInstruction" "v7" "v7LEInstruction" "Cortex"
+         //                "v6" "v5t" "v5" "v4t" "v4" "default"
          if (is_64) {  //AARCH64
             sleigh = "AARCH64";
             sleigh += (is_be ? ":BE:64:v8A" : ":LE:64:v8A");
@@ -561,6 +572,7 @@ bool get_sleigh_id(string &sleigh) {
       case PLFM_JAVA:
          break;
       case PLFM_MIPS:
+         //options include "R6" "micro" "64-32addr" "micro64-32addr" "64-32R6addr" "default"
          sleigh += is_64 ? ":64:default" : ":32:default";
          break;
       case PLFM_HPPA:
@@ -576,6 +588,7 @@ bool get_sleigh_id(string &sleigh) {
       case PLFM_TRICORE:
          break;
       case PLFM_386:
+         //options include "System Management Mode" "Real Mode" "Protected Mode" "default"
          sleigh += is_64 ? ":64" : (inf_is_32bit() ? ":32" : ":16");
          sleigh += ":default";
 
@@ -610,6 +623,16 @@ bool does_func_return(void *func) {
 uint64_t get_func_start(void *func) {
    func_t *f = (func_t*)func;
    return f->start_ea;
+}
+
+uint64_t get_func_start(uint64_t ea) {
+   func_t *f = get_func((ea_t)ea);
+   return f ? f->start_ea : BADADDR;
+}
+
+uint64_t get_func_end(uint64_t ea) {
+   func_t *f = get_func((ea_t)ea);
+   return f ? f->end_ea : BADADDR;
 }
 
 //Create a Ghidra to Ida name mapping for a single loval variable (including formal parameters)
@@ -692,14 +715,14 @@ void decompile_at(ea_t addr, TWidget *w) {
    func_t *func = get_func(addr);
    Function *ast = NULL;
    if (func) {
-      int res = do_decompile(func->start_ea, &ast);
+      int res = do_decompile(func->start_ea, func->end_ea, &ast);
       if (ast) {
          msg("got a Functon tree!\n");
          Decompiled *dec = new Decompiled(ast, func);
 
          //now try to map ghidra stack variable names to ida stack variable names
          map_ghidra_to_ida(dec);
-         
+
          vector<string> code;
          dec->ast->print(&code);
          strvec_t *sv = new strvec_t();
@@ -711,11 +734,11 @@ void decompile_at(ea_t addr, TWidget *w) {
          qstring fmt;
          get_func_name(&func_name, func->start_ea);
          string title = get_available_title();
-         fmt.sprnt("Ghidra code  - %s", title.c_str());   // make the suffix change with more windows 
+         fmt.sprnt("Ghidra code  - %s", title.c_str());   // make the suffix change with more windows
 
          simpleline_place_t s1;
          simpleline_place_t s2((int)(sv->size() - 1));
-         
+
          if (w == NULL) {
             TWidget *cv = create_custom_viewer(fmt.c_str(), &s1, &s2,
                                                &s1, NULL, sv, &handlers, sv);
@@ -734,7 +757,7 @@ void decompile_at(ea_t addr, TWidget *w) {
             delete function_map[w];
             function_map[w] = dec;
             delete sv;
-         }         
+         }
       }
 //      msg("do_decompile returned: %d\n%s\n%s\n", res, code.c_str(), cfunc.c_str());
    }
@@ -785,12 +808,12 @@ bool is_thumb_mode(uint64_t ea) {
    return get_sreg((ea_t)ea, 20) == 1;
 }
 
-//is ea a function internal jump target, if so 
+//is ea a function internal jump target, if so
 //return true and place its name in name
 //else return false
 bool is_code_label(uint64_t ea, string &name) {
    xrefblk_t xr;
-   for (bool success = xr.first_to((ea_t)ea, XREF_ALL); success; success = xr.next_to()) {   
+   for (bool success = xr.first_to((ea_t)ea, XREF_ALL); success; success = xr.next_to()) {
       if (xr.iscode == 0) {
          break;
       }
@@ -830,7 +853,7 @@ bool is_external_ref(uint64_t ea, uint64_t *fptr) {
       if (fptr) {
          *fptr = got;
       }
-      msg("0x%zx is external, with got entry at 0x%zx\n", ea, (size_t)got); 
+      msg("0x%zx is external, with got entry at 0x%zx\n", ea, (size_t)got);
    }
    return res;
 }
@@ -861,7 +884,7 @@ bool is_named_addr(uint64_t ea, string &name) {
       name = res.c_str();
       return true;
    }
-   return false;   
+   return false;
 }
 
 //--------------------------------------------------------------------------

@@ -57,7 +57,8 @@ Symbol *ida_scope::ida_query(const Address &addr) const {
    }
 */   
    dmsg("ida_scope::ida_query - 0x%x\n", (uint32_t)addr.getOffset());
-	if (addr.getSpace() == ida->getDefaultSpace()) {
+   AddrSpace *aspace = addr.getSpace();
+   if (aspace == ida->getDefaultSpace()) {
       if (is_function_start(ea)) {
          get_func_name(symname, ea);
 /*         
@@ -84,7 +85,9 @@ Symbol *ida_scope::ida_query(const Address &addr) const {
          scope->addSymbolInternal(sym);
          scope->addMapPoint(sym, addr, Address());
       }
-	}
+   }
+   else if (aspace && aspace->getName() == "register") {
+   }
 
    return sym;
 }

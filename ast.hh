@@ -26,7 +26,7 @@
 using std::string;
 using std::vector;
 
-//A very crude AST for representing Ghidra generated 
+//A very crude AST for representing Ghidra generated
 //decompilations
 
 //we make no attempt to validate the structure of the tree
@@ -123,7 +123,7 @@ struct UnaryExpr : public Expression {
 
 struct ParenExpr : public Expression {
    Expression *inner;
-   
+
    ParenExpr(Expression *_inner) : inner(_inner) {};
    virtual void print();
 
@@ -133,7 +133,7 @@ struct ParenExpr : public Expression {
 struct ArrayExpr : public Expression {
    Expression *array;
    Expression *index;
-   
+
    ArrayExpr(Expression *_array, Expression *_index) : array(_array), index(_index) {};
    virtual void print();
 
@@ -141,32 +141,32 @@ struct ArrayExpr : public Expression {
 };
 
 struct BreakStatement : public Statement {
-   virtual void print();   
+   virtual void print();
 };
 
 struct LabelExpr : public Expression {
    string label;
    LabelExpr(const string &_label) : label(_label) {};
-   virtual void print();   
+   virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
 };
 
 struct LabelStatement : public Statement {
    string label;
-   
+
    LabelStatement(const string &_label) : label(_label) {
       no_indent = true;
       no_semi = true;
    };
-   virtual void print();   
+   virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
 };
 
 struct GotoStatement : public Statement {
    Expression *label;
-   virtual void print();   
+   virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
 };
@@ -186,7 +186,7 @@ struct VarDecl : public Statement {
    Expression *var;
 //   string name;
    Expression *init;
-   
+
    VarDecl() : type(NULL), var(NULL), init(NULL) {};
 
    virtual void print();
@@ -201,7 +201,7 @@ struct Funcproto : public AstItem {
    vector<string> keywords;
    string name;
    vector<VarDecl*> parameters;
-   
+
    Funcproto() : return_type(NULL) {};
 
    virtual void print();
@@ -274,7 +274,7 @@ struct CharExpr : public LiteralExpr {
    virtual void print();
 };
 
-struct EmptyExpr : public Expression {   
+struct EmptyExpr : public Expression {
    virtual void print() {};
 };
 
@@ -289,9 +289,9 @@ struct EmptyStatement : public Statement {
 struct ConditionalStatement : public Statement {
    Expression *cond;
    Block block;
-   
+
    ConditionalStatement() : cond(NULL) {};
-      
+
    void push_back(Statement *stmt) {block.push_back(stmt);};
    Statement * &back() {return block.back();};
 
@@ -300,7 +300,7 @@ struct ConditionalStatement : public Statement {
 
 struct Else : public AstItem {
    Block block;
-   
+
    Else() {no_semi = true;};
    virtual void print();
 
@@ -309,7 +309,7 @@ struct Else : public AstItem {
 
 struct If : public ConditionalStatement {
    Else *_else;
-   
+
    If() : _else(NULL) {no_semi = true;};
 
    virtual void print();
@@ -317,13 +317,13 @@ struct If : public ConditionalStatement {
    virtual void rename(const string &oldname, const string &newname);
 };
 
-struct While : public ConditionalStatement {   
+struct While : public ConditionalStatement {
    While() {no_semi = true;};
 
    virtual void print();
 };
 
-struct DoWhile : public ConditionalStatement {   
+struct DoWhile : public ConditionalStatement {
    DoWhile() {};
 
    virtual void print();
@@ -332,7 +332,7 @@ struct DoWhile : public ConditionalStatement {
 struct Case : public Block {
    string label;
    bool is_default;
-   
+
    Case(bool _is_default = false) : is_default(_is_default) {};
    void print();
 };
@@ -358,7 +358,7 @@ struct Return : public Statement {
 struct AssignExpr : public Expression {
    Expression *lval;
    Expression *rval;
-   
+
    AssignExpr(Expression *lhs, Expression *rhs) : lval(lhs), rval(rhs) {};
    ~AssignExpr();
 
@@ -369,7 +369,7 @@ struct AssignExpr : public Expression {
 
 struct ExprStatement : public Statement {
    Expression *expr;
-   
+
    ExprStatement(Expression *e) : expr(e) {};
    ~ExprStatement();
 
@@ -382,7 +382,7 @@ struct Ternary : public Expression {
    Expression *expr;
    Expression *_true;
    Expression *_false;
-   
+
    Ternary() : expr(NULL), _true(NULL), _false(NULL) {};
 
    virtual void print();
@@ -392,18 +392,21 @@ struct Ternary : public Expression {
 
 //we are only interested in function trees
 //NOT entire program trees
-struct Function : public Statement {   
+struct Function : public Statement {
+   uint64_t addr;
    Funcproto prototype;
    Block block;
 
+   Function(uint64_t ea) : addr(ea) {};
+
    virtual void print();
    virtual void print(vector<string> *cfunc);
-   
+
    virtual void rename(const string &oldname, const string &newname);
 };
 
 class Element;
-Function *func_from_xml(Element *el);
+Function *func_from_xml(Element *el, uint64_t addr);
 
 bool is_reserved(const string &word);
 
