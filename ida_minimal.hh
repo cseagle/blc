@@ -137,6 +137,10 @@ idaman bool ida_export is_loaded(uint64_t ea);
 
 idaman size_t ida_export get_func_qty(void);
 
+idaman uint64_t ida_export get_item_end(uint64_t ea);
+
+inline size_t get_item_size(uint64_t ea) { return get_item_end(ea) - ea; }
+
 struct func_t;
 idaman func_t *ida_export getn_func(size_t n);
 

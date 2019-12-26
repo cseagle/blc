@@ -146,23 +146,29 @@ TrackedSet &get_tracked_set(uint64_t start, uint64_t end) {
    //if we are tracking any registers. In particular, if any registers are fixed on entry
    //we should add them to the TrackedSet for ea. This is probabaly more useful for some archs
    //than others.
-   AddrSpace *ram = arch->getSpaceByName("ram");
-   Address func_begin(ram, start);
-   Address func_end(ram, end);
+   AddrSpace *as = arch->getSpaceByName("ram");
+   Address func_begin(as, start);
+   Address func_end(as, end);
    return arch->context->createSet(func_begin, func_end);
+}
+
+void add_tracked_reg(TrackedSet &regs, uint64_t offset, uint64_t value, uint32_t size) {
+   regs.push_back(TrackedContext());
+   TrackedContext &reg = regs.back();
+   reg.loc.space = arch->getSpaceByName("register");
+   reg.loc.offset = offset;
+   reg.loc.size = size;
+   reg.val = value;
 }
 
 void mips_setup(uint64_t start, uint64_t end) {
    TrackedSet &regs = get_tracked_set(start, end);
-   regs.push_back(TrackedContext());
-   TrackedContext back = regs.back();
-   AddrSpace *register_space = arch->getSpaceByName("register");
-   back.loc.space = register_space;
-
+   
    //this is very n64 specific
-   back.loc.offset = 0xc8;  // this is $t9 - need to do this better
-   back.loc.size = 8;
-   back.val = start;
+   // this is $t9 - need to do this better
+   add_tracked_reg(regs, 0xc8, start, 8);
+   add_tracked_reg(regs, 0xcc, start & 0xffffffffll, 4);
+   add_tracked_reg(regs, 0xc8, start >> 32, 4);
 }
 
 int idaapi blc_init(void) {
@@ -259,7 +265,7 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 
       arch_map_t::iterator setup = arch_map.find(get_proc_id());
       if (setup != arch_map.end()) {
-//         (*setup->second)(start_ea, end_ea);
+         (*setup->second)(start_ea, end_ea);
       }
 
       arch->allacts.getCurrent()->reset(*fd);
@@ -297,10 +303,10 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
          if (doc) {
             string pretty;
             dump_el(doc->getRoot(), 0, pretty);
-            msg("%s\n", pretty.c_str());
+//            msg("%s\n", pretty.c_str());
 
             *result = func_from_xml(doc->getRoot(), start_ea);
-            msg("%s\n", c_code.c_str());
+//            msg("%s\n", c_code.c_str());
          }
       }
       check_err_stream();

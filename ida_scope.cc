@@ -18,9 +18,12 @@
 */
 
 #include "ida_scope.hh"
+#include "type.hh"
 
-#ifdef DEBUG_AST
-#define dmsg(x, ...) msg(x, ...)
+//#define DEBUG_SCOPE 1
+
+#ifdef DEBUG_SCOPE
+#define dmsg(x, ...) msg(x, __VA_ARGS__)
 #else
 #define dmsg(x, ...)
 #endif
@@ -31,12 +34,7 @@ ida_scope::ida_scope(ida_arch *g) : ScopeInternal("", g), ida(g) {}
 ida_scope::~ida_scope(void) {
 }
 
-/// Determine if the given address should be sent to the ida client
-/// at all, by checking the hole map and other factors.
-/// If it passes, send the query to the client, process the result,
-/// and update the cache. If a Symbol is ultimately recovered, return it.
-/// \param addr is the address to potentially query
-/// \return the matching Symbol or NULL if there is hole
+//Determine if a symbol is associated with the given address
 Symbol *ida_scope::ida_query(const Address &addr) const {
    Symbol *sym = NULL;
    uint64_t ea = addr.getOffset();
@@ -56,7 +54,7 @@ Symbol *ida_scope::ida_query(const Address &addr) const {
       dmsg("ida_scope::ida_query - I am NOT the scope\n");
    }
 */   
-   dmsg("ida_scope::ida_query - 0x%x\n", (uint32_t)addr.getOffset());
+   dmsg("ida_scope::ida_query - 0x%zx\n", addr.getOffset());
    AddrSpace *aspace = addr.getSpace();
    if (aspace == ida->getDefaultSpace()) {
       if (is_function_start(ea)) {
@@ -72,21 +70,47 @@ Symbol *ida_scope::ida_query(const Address &addr) const {
 */
          dmsg("ida_scope::ida_query - creating FunctionSymbol for 0x%zx(%s)\n", ea, symname.c_str());
          sym = new FunctionSymbol(scope, symname, glb->min_funcsymbol_size);
-//         dmsg("ida_scope::ida_query - calling addSymbolInternal (%d)\n", sym == NULL);
-         scope->addSymbolInternal(sym);
-         // Map symbol to base address of function
-         // there is no limit on the applicability of this map within scope
-//         dmsg("ida_scope::ida_query - calling addMapPoint\n");
-         scope->addMapPoint(sym, addr, Address());
-//         }
       }
       else if (is_code_label(ea, symname)) {
+         dmsg("ida_scope::ida_query - creating LabSymbol for 0x%zx(%s)\n", ea, symname.c_str());
          sym = new LabSymbol(scope, symname);
+      }
+      else if (is_named_addr(ea, symname)) {
+         dmsg("ida_scope::ida_query - default space query - %s\n", symname.c_str());
+         if (is_extern(symname)) {
+            dmsg("ida_scope::ida_query - %s is external\n", symname.c_str());
+         }
+         else {
+            uint64_t tgt;
+            if (is_pointer_var(ea, aspace->getAddrSize(), &tgt)) {
+               dmsg("ida_scope::ida_query - %s looks like a pointer to 0x%zx\n", symname.c_str(), tgt);
+               dmsg("ida_scope::ida_query - 0x%zx may be read only: %d\n", ea, is_read_only(ea));
+               Datatype *pt = glb->types->getBase(1, TYPE_UNKNOWN);
+               Datatype *dt = glb->types->getTypePointer(aspace->getAddrSize(), pt, 1);
+//               Datatype *dt = glb->types->getBase(aspace->getAddrSize(), TYPE_PTR);
+               sym = new Symbol(scope, symname, dt);
+            }
+            else {
+               dmsg("ida_scope::ida_query - %s using type unknown\n", symname.c_str());
+               Datatype *dt = glb->types->getBase(get_item_size(ea), TYPE_UNKNOWN);
+               sym = new Symbol(scope, symname, dt);
+            }
+         }
+      }
+      else {
+         dmsg("ida_scope::ida_query - default space query\n");
+      }
+      if (sym) {
+         dmsg("ida_scope::ida_query - new symbol flags: 0x%x\n", sym->getFlags());
          scope->addSymbolInternal(sym);
          scope->addMapPoint(sym, addr, Address());
       }
    }
    else if (aspace && aspace->getName() == "register") {
+      dmsg("ida_scope::ida_query - query is in register space\n");
+   }
+   else if (aspace) {
+      dmsg("ida_scope::ida_query - query is in %s space\n", aspace->getName().c_str());
    }
 
    return sym;
@@ -95,7 +119,7 @@ Symbol *ida_scope::ida_query(const Address &addr) const {
 SymbolEntry *ida_scope::findAddr(const Address &addr,
                                  const Address &usepoint) const {
    SymbolEntry *entry;
-   dmsg("ida_scope::findAddr - 0x%x\n", (uint32_t)addr.getOffset());
+   dmsg("ida_scope::findAddr - 0x%zx\n", addr.getOffset());
    entry = ScopeInternal::findAddr(addr, usepoint);
    if (entry == NULL) { // Didn't find symbol
       entry = findContainer(addr, 1, Address());
@@ -146,7 +170,7 @@ SymbolEntry *ida_scope::findContainer(const Address &addr, int4 size,
 
 ExternRefSymbol *ida_scope::findExternalRef(const Address &addr) const {
    ExternRefSymbol *sym;
-   dmsg("ida_scope::findExternalRef - 0x%x\n", (uint32_t)addr.getOffset());
+   dmsg("ida_scope::findExternalRef - 0x%zx\n", addr.getOffset());
    sym = ScopeInternal::findExternalRef(addr);
    if (sym == NULL) {
       // Check if this address has already been queried,
@@ -161,7 +185,7 @@ ExternRefSymbol *ida_scope::findExternalRef(const Address &addr) const {
 }
 
 Funcdata *ida_scope::findFunction(const Address &addr) const {
-   dmsg("ida_scope::findFunction - 0x%x\n", (uint32_t)addr.getOffset());
+   dmsg("ida_scope::findFunction - 0x%zx\n", addr.getOffset());
    Funcdata *fd = ScopeInternal::findFunction(addr);
    if (fd == NULL) {
       FunctionSymbol *sym;
@@ -183,7 +207,7 @@ LabSymbol *ida_scope::findCodeLabel(const Address &addr) const {
       }
    }
    LabSymbol *sym;
-   dmsg("ida_scope::findCodeLabel - 0x%x\n", (uint32_t)addr.getOffset());
+   dmsg("ida_scope::findCodeLabel - 0x%zx\n", addr.getOffset());
    sym = ScopeInternal::findCodeLabel(addr);
    if (sym == NULL) {
       // Check if this address has already been queried,
@@ -233,7 +257,7 @@ string ida_scope::buildVariableName(const Address &addr,
       return name;
    }
    name = ScopeInternal::buildVariableName(addr, pc, ct, index, flags);
-   dmsg("ida_scope::buildVariableName - 0x%x -> %s\n", (uint32_t)addr.getOffset(), name.c_str());
+   dmsg("ida_scope::buildVariableName - 0x%zx -> %s\n", addr.getOffset(), name.c_str());
    return name;
 }
 

@@ -167,7 +167,7 @@ static bool navigate_to_word(TWidget *w, bool cursor) {
    if (get_current_word(w, cursor, word)) {
       ea_t ea = get_name_ea(BADADDR, word.c_str());
       if (ea != BADADDR) {
-         if (is_function_start(ea)) {
+         if (is_function_start(ea) && !is_extern_addr(ea)) {
             map<TWidget*,qvector<ea_t> >::iterator mi = histories.find(w);
             if (mi == histories.end() || mi->second.size() == 0 || mi->second.back() != ea) {
                histories[w].push_back(ea);
@@ -204,23 +204,23 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
             bool refresh = false;
             if (get_current_word(w, false, word)) {
                string sword(word.c_str());
-               msg("Try to rename: %s\n", word.c_str());
+//               msg("Try to rename: %s\n", word.c_str());
                if (!is_reserved(sword)) {
                   qstring new_name(word);
                   map<string,LocalVar*>::iterator mi = dec->locals.find(sword);
                   if (mi != dec->locals.end()) {
-                     msg("%s is a local\n", word.c_str());
+//                     msg("%s is a local\n", word.c_str());
                      LocalVar *lv = mi->second;
                      if (ask_str(&word, HIST_IDENT, "Please enter item name") && sword != word.c_str()) {
                         string newname(word.c_str());
                         //need to make sure new name will be legal
                         if (is_reserved(newname) || dec->locals.find(newname) != dec->locals.end() ||
                             get_name_ea(BADADDR, newname.c_str()) != BADADDR) {
-                           msg("rename fail 1\n");
+//                           msg("rename fail 1\n");
                            return true;
                         }
                         if (lv->offset != BADADDR) { //stack var
-                           msg("renaming a stack var %s to %s\n", sword.c_str(), word.c_str());
+//                           msg("renaming a stack var %s to %s\n", sword.c_str(), word.c_str());
                            if (set_member_name(get_frame(dec->ida_func), lv->offset, word.c_str())) {
                               lv->current_name = newname;
                               dec->locals.erase(sword);
@@ -229,13 +229,13 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                               refresh = true;
                            }
                            else {
-                              msg("set_member_name failed\n");
+//                              msg("set_member_name failed\n");
                            }
                         }
                         else { //not stack var, reg var??
                            qstring iname;
                            netnode nn(dec->ida_func->start_ea);
-                           msg("renaming a reg var %s to %s\n", sword.c_str(), word.c_str());
+//                           msg("renaming a reg var %s to %s\n", sword.c_str(), word.c_str());
                            lv->current_name = newname;
                            dec->locals.erase(sword);
                            dec->locals[word.c_str()] = lv;
@@ -248,7 +248,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                   else if (do_ida_rename(new_name, dec->ida_func->start_ea) == 2) {
                      string snew_name(new_name.c_str());
                      dec->ast->rename(sword, snew_name);
-                     msg("rename: %s -> %s\n", word.c_str(), new_name.c_str());
+//                     msg("rename: %s -> %s\n", word.c_str(), new_name.c_str());
                      refresh = true;
                   }
                   else {
@@ -280,7 +280,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                return false;
             }
             if (get_current_word(w, false, word)) {
-               msg("(%d)type: %s\n", y, word.c_str());
+//               msg("(%d)type: %s\n", y, word.c_str());
             }
             return true;
          }
@@ -289,7 +289,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
             if (get_custom_viewer_place(w, false, &x, &y) == NULL) {
                return false;
             }
-            msg("add comment on line %d\n", y);
+//            msg("add comment on line %d\n", y);
             return true;
          }
          case IK_ESCAPE: {
@@ -316,7 +316,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
             return navigate_to_word(w, false);
          }
          default:
-            msg("Detected key press: 0x%x\n", key);
+//            msg("Detected key press: 0x%x\n", key);
             break;
        }
    }
@@ -361,7 +361,7 @@ void find_ida_name_dialog() {
          lf++;
          if (strncmp("Rename address\n", lf, 15) == 0) {
             name_dialog = hlp;
-            msg("Found:\n%s\n", hlp);
+//            msg("Found:\n%s\n", hlp);
             break;
          }
       }
@@ -377,7 +377,7 @@ int do_ida_rename(qstring &name, ea_t func) {
    ea_t name_ea = get_name_ea(func, name.c_str());
    if (name_ea == BADADDR) {
       //somehow the original name is invalid
-      msg("rename: %s has no addr\n", name.c_str());
+//      msg("rename: %s has no addr\n", name.c_str());
       return -1;
    }
    qstring orig = name;
@@ -386,30 +386,15 @@ int do_ida_rename(qstring &name, ea_t func) {
       ea_t new_name_ea = get_name_ea(func, name.c_str());
       if (new_name_ea != BADADDR) {
          //new name is same as existing name
-         msg("rename: new name already in use\n", name.c_str());
+//         msg("rename: new name already in use\n", name.c_str());
          return 0;
       }
-      msg("Custom rename: %s at adddress 0x%zx\n", name.c_str(), name_ea);
+//      msg("Custom rename: %s at adddress 0x%zx\n", name.c_str(), name_ea);
       res = set_name(name_ea, name.c_str());
       return res ? 2 : 3;
    }
-   msg("rename: no change\n");
+//   msg("rename: no change\n");
    return 1;
-/*
-   if (name_dialog) {
-      ushort flags = 0;
-      ea_t ea = get_name_ea(BADADDR, name.c_str());
-      if (ea != BADADDR) {
-         int res = ask_form(name_dialog, &ea, &name, &flags);
-         if (res < 1) {
-            return false;
-         }
-         msg("Custom rename: %s\n", name.c_str());
-         return true;
-      }
-   }
-   return false;
-*/
 }
 
 void init_ida_ghidra() {
@@ -420,7 +405,7 @@ void init_ida_ghidra() {
    else {
       ghidra_dir = idadir("plugins");
    }
-   find_ida_name_dialog();
+//   find_ida_name_dialog();
 
    arch_map[PLFM_MIPS] = mips_setup;
 
@@ -717,7 +702,7 @@ void decompile_at(ea_t addr, TWidget *w) {
    if (func) {
       int res = do_decompile(func->start_ea, func->end_ea, &ast);
       if (ast) {
-         msg("got a Functon tree!\n");
+//         msg("got a Functon tree!\n");
          Decompiled *dec = new Decompiled(ast, func);
 
          //now try to map ghidra stack variable names to ida stack variable names
@@ -830,22 +815,29 @@ bool is_code_label(uint64_t ea, string &name) {
    return false;
 }
 
+bool is_extern_addr(uint64_t ea) {
+   qstring sname;
+   segment_t *s = getseg(ea);
+   if (s) {
+      get_segm_name(&sname, s);
+      if (sname == "extern") {
+         return true;
+      }
+   }
+   return false;
+}
+
 bool is_external_ref(uint64_t ea, uint64_t *fptr) {
    ea_t got;
    func_t *pfn = get_func((ea_t)ea);
    if (pfn == NULL) {
       return false;
    }
-   qstring sname;
-   segment_t *s = getseg(pfn->start_ea);
-   if (s) {
-      get_segm_name(&sname, s);
-      if (sname == "extern") {
-         if (fptr) {
-            *fptr = pfn->start_ea;
-         }
-         return true;
+   if (is_extern_addr(pfn->start_ea)) {
+      if (fptr) {
+         *fptr = pfn->start_ea;
       }
+      return true;
    }
    ea_t _export = calc_thunk_func_target(pfn, &got);
    bool res = _export != BADADDR;
@@ -861,8 +853,14 @@ bool is_external_ref(uint64_t ea, uint64_t *fptr) {
 bool is_extern(const string &name) {
    bool res = false;
    ea_t ea = get_name_ea(BADADDR, name.c_str());
+   if (ea == BADADDR) {
+      return false;
+   }
    if (is_function_start(ea)) {
       res = is_external_ref(ea, NULL);
+   }
+   else {
+      res = is_extern_addr(ea);
    }
 //   msg("is_extern called for %s (%d)\n", name.c_str(), res);
    return res;
@@ -885,6 +883,68 @@ bool is_named_addr(uint64_t ea, string &name) {
       return true;
    }
    return false;
+}
+
+bool is_pointer_var(uint64_t ea, uint32_t size, uint64_t *tgt) {
+   xrefblk_t xb;
+   if (xb.first_from(ea, XREF_DATA) && xb.type == dr_O) {
+      // xb.to - contains the referenced address
+      *tgt = xb.to;
+      return true;
+   }
+   return false;
+}
+
+bool is_read_only(uint64_t ea) {
+   qstring sname;
+   segment_t *s = getseg(ea);
+   if (s) {
+      if ((s->perm & SEGPERM_WRITE) == 0) {
+         return true;
+      }
+      //not explicitly read only, so let's make some guesses
+      //based on the segment name
+      get_segm_name(&sname, s);
+      if (sname.find("got") <= 1) {
+         return true;
+      }
+      if (sname.find("rodata") <= 1) {
+         return true;
+      }
+      if (sname.find("rdata") <= 1) {
+         return true;
+      }
+      if (sname.find("idata") <= 1) {
+         return true;
+      }
+   }
+   return false;
+}
+
+bool simplify_deref(const string &name, string &new_name) {
+   uint64_t tgt;
+   ea_t addr = get_name_ea(BADADDR, name.c_str());
+   if (addr != BADADDR && is_read_only(addr) && is_pointer_var(addr, (uint32_t)ph.max_ptr_size(), &tgt)) {
+      if (get_name(new_name, tgt, 0)) {
+//         msg("could simplify *%s to %s\n", name.c_str(), new_name.c_str());
+         return true;
+      }
+   }
+   return false;
+}
+
+void adjust_thunk_name(string &name) {
+   ea_t ea = get_name_ea(BADADDR, name.c_str());
+   if (is_function_start(ea)) {
+      func_t *f = get_func(ea);
+      ea_t fun = calc_thunk_func_target(f, &ea);
+      if (fun != BADADDR) {
+         qstring tname;
+         if (get_name(&tname, fun)) {
+            name = tname.c_str();
+         }
+      }
+   }
 }
 
 //--------------------------------------------------------------------------

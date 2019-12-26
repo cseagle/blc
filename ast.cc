@@ -30,8 +30,10 @@
 using std::map;
 using std::set;
 
+//#define DEBUG_AST 1
+
 #ifdef DEBUG_AST
-#define dmsg(x, ...) msg(x, ...)
+#define dmsg(x, ...) msg(x, __VA_ARGS__)
 #else
 #define dmsg(x, ...)
 #endif
@@ -300,8 +302,17 @@ void LiteralExpr::print() {
    line += val;
 }
 
+NameExpr::NameExpr(const string &var) : name(var) {
+   adjust_thunk_name(name);
+}
+
 void NameExpr::print() {
-   append_colored(COLOR_DNAME, name);
+   if (is_extern(name)) {
+      append_colored(COLOR_IMPNAME, name);
+   }
+   else {
+      append_colored(COLOR_DNAME, name);
+   }
 }
 
 void NameExpr::rename(const string &oldname, const string &newname) {
@@ -468,7 +479,7 @@ void ParenExpr::print() {
 
 void ParenExpr::rename(const string &oldname, const string &newname) {
    if (inner) {
-      dmsg("PArenExpr::rename from %s to %s\n", oldname.c_str(), newname.c_str());
+      dmsg("ParenExpr::rename from %s to %s\n", oldname.c_str(), newname.c_str());
       inner->rename(oldname, newname);
    }
 }
@@ -498,6 +509,12 @@ void Block::print() {
          append_colored(COLOR_SYMBOL, SEMICOLON);
       }
       flush(s->no_indent);
+   }
+}
+
+Block::~Block() {
+   for (vector<Statement*>::iterator i = block.begin(); i != block.end(); i++) {
+      delete *i;
    }
 }
 
@@ -552,6 +569,12 @@ void VarDecl::rename(const string &oldname, const string &newname) {
    }
 }
 
+VarDecl::~VarDecl() {
+   delete type;
+   delete var;
+   delete init;
+}
+
 void Funcproto::print() {
    return_type->print();
    for (vector<string>::iterator i = keywords.begin(); i != keywords.end(); i++) {
@@ -578,6 +601,13 @@ void Funcproto::rename(const string &oldname, const string &newname) {
    }
    for (vector<VarDecl*>::iterator i = parameters.begin(); i != parameters.end(); i++) {
       (*i)->rename(oldname, newname);
+   }
+}
+
+Funcproto::~Funcproto() {
+   delete return_type;
+   for (vector<VarDecl*>::iterator i = parameters.begin(); i != parameters.end(); i++) {
+      delete *i;
    }
 }
 
@@ -967,6 +997,20 @@ static CastExpr *cast_handler(List::const_iterator &it, List::const_iterator &en
    return result;
 }
 
+static Expression *make_unary(const string &op, List::const_iterator &it, List::const_iterator &end) {
+   UnaryExpr *u = new UnaryExpr(op, expr_handler(it, end));
+   NameExpr *n = dynamic_cast<NameExpr*>(u->expr);
+   if (n && op == "*") {
+      dmsg("made unary expr: %s%s\n", op.c_str(), n->name.c_str());
+      string new_name;
+      if (simplify_deref(n->name, new_name)) {
+         delete u;
+         return new NameExpr(new_name);
+      }
+   }
+   return u;
+}
+
 static Expression *expr_handler(List::const_iterator &it, List::const_iterator &end, bool in_paren) {
    static int ecount = 0;
    Expression *result = NULL;
@@ -1029,7 +1073,8 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
             }
             else if (unary_ops.find(op) != unary_ops.end() && result == NULL) {
                dmsg("expr_handler syntax building UnaryExpr for %s\n", op.c_str());
-               result = new UnaryExpr(op, expr_handler(++it, end));
+               //result = new UnaryExpr(op, expr_handler(++it, end));
+               result = make_unary(op, ++it, end);
                dmsg("   %s\n", debug_print(result));
             }
             else if (binary_ops.find(op) != binary_ops.end() && result != NULL) {
@@ -1067,6 +1112,16 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
                      else {
                         if (result != NULL) {
                            //This looks more like a fucntion call then
+                           //test special case for function name
+                           ParenExpr *rp = dynamic_cast<ParenExpr*>(result);
+                           if (rp) {
+                              NameExpr *rn = dynamic_cast<NameExpr*>(rp->inner);
+                              if (rn) {
+                                 NameExpr *ne = new NameExpr(rn->name);
+                                 delete rp;
+                                 result = ne;
+                              }
+                           }
                            result = new CallExpr(result, p);
                            dmsg("   Looks like function call: %s\n", debug_print(result));
                         }
@@ -1122,7 +1177,8 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
             const string &op = child->getContent();
             if (unary_ops.find(op) != unary_ops.end() && result == NULL) {
                dmsg("expr_handler op building UnaryExpr\n");
-               result = new UnaryExpr(op, expr_handler(++it, end));
+               //result = new UnaryExpr(op, expr_handler(++it, end));
+               result = make_unary(op, ++it, end);
                dmsg("expr_handler op built UnaryExpr(%p) for %s\n", result, op.c_str());
                dmsg("   %s\n", debug_print(result));
             }

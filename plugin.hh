@@ -79,6 +79,7 @@ bool is_code_label(uint64_t ea, string &name);
 //is ea an external function, if so 
 //return true and place its import table address in fptr
 //else return false
+bool is_extern_addr(uint64_t ea);
 bool is_external_ref(uint64_t ea, uint64_t *fptr);
 bool is_extern(const string &name);
 
@@ -88,6 +89,14 @@ bool is_extern(const string &name);
 bool is_library_func(const string &name);
 
 bool is_named_addr(uint64_t ea, string &name);
+
+bool is_pointer_var(uint64_t ea, uint32_t size, uint64_t *tgt);
+
+bool is_read_only(uint64_t ea);
+
+bool simplify_deref(const string &name, string &new_name);
+
+void adjust_thunk_name(string &name);
 
 void mips_setup(uint64_t start, uint64_t end);
 

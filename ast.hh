@@ -87,14 +87,18 @@ struct Expression : public AstItem {
 
 struct NameExpr : public Expression {
    string name;
-   NameExpr(const string &var) : name(var) {};
+
+   NameExpr(const string &var);
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
 };
 
 struct FuncNameExpr : public NameExpr {
+
    FuncNameExpr(const string &var) : NameExpr(var) {};
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -106,6 +110,8 @@ struct BinaryExpr : public Expression {
    Expression *rhs;
 
    BinaryExpr(const string &binop, Expression *left, Expression *right) : op(binop), lhs(left), rhs(right) {};
+   ~BinaryExpr() {delete lhs; delete rhs;}
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -116,6 +122,8 @@ struct UnaryExpr : public Expression {
    Expression *expr;
 
    UnaryExpr(const string &unop, Expression *ex) : op(unop), expr(ex) {};
+   ~UnaryExpr() {delete expr;};
+   
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -125,6 +133,8 @@ struct ParenExpr : public Expression {
    Expression *inner;
 
    ParenExpr(Expression *_inner) : inner(_inner) {};
+   ~ParenExpr() {delete inner;};
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -135,6 +145,8 @@ struct ArrayExpr : public Expression {
    Expression *index;
 
    ArrayExpr(Expression *_array, Expression *_index) : array(_array), index(_index) {};
+   ~ArrayExpr() {delete array; delete index;};
+   
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -146,7 +158,9 @@ struct BreakStatement : public Statement {
 
 struct LabelExpr : public Expression {
    string label;
+
    LabelExpr(const string &_label) : label(_label) {};
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -159,6 +173,7 @@ struct LabelStatement : public Statement {
       no_indent = true;
       no_semi = true;
    };
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -166,6 +181,9 @@ struct LabelStatement : public Statement {
 
 struct GotoStatement : public Statement {
    Expression *label;
+   
+   ~GotoStatement() {delete label;};
+   
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -173,6 +191,8 @@ struct GotoStatement : public Statement {
 
 struct Block : public AstItem {
    vector<Statement*> block;
+
+   ~Block();
 
    void push_back(Statement *s) {block.push_back(s);};
    Statement * &back() {return block.back();};
@@ -188,6 +208,7 @@ struct VarDecl : public Statement {
    Expression *init;
 
    VarDecl() : type(NULL), var(NULL), init(NULL) {};
+   ~VarDecl();
 
    virtual void print();
 
@@ -203,6 +224,7 @@ struct Funcproto : public AstItem {
    vector<VarDecl*> parameters;
 
    Funcproto() : return_type(NULL) {};
+   ~Funcproto();
 
    virtual void print();
 
@@ -227,6 +249,7 @@ struct CommaExpr : public Expression {
 
    CommaExpr(Expression *_lhs, Expression *_rhs) : lhs(_lhs), rhs(_rhs) {};
    ~CommaExpr();
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -235,7 +258,10 @@ struct CommaExpr : public Expression {
 struct TypeCast : public Expression {
    Expression *type;
    Expression *expr;
+
    TypeCast(Expression *_type, Expression *_expr) : type(_type), expr(_expr) {};
+   ~TypeCast() {delete type; delete expr;};
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -245,8 +271,10 @@ struct CallExpr : public Expression {
    Expression *func;
    Expression *args; //should be a ParenExpr
 //   vector<Expression*> args;
+
    CallExpr(Expression *f, Expression *arglist) : func(f), args(arglist) {};
    ~CallExpr();
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -261,16 +289,19 @@ struct LiteralExpr : public Expression {
 
 struct NumericExpr : public LiteralExpr {
    NumericExpr(const string &num) : LiteralExpr(num) {};
+
    virtual void print();
 };
 
 struct StringExpr : public LiteralExpr {
    StringExpr(const string &str) : LiteralExpr(str) {};
+
    virtual void print();
 };
 
 struct CharExpr : public LiteralExpr {
    CharExpr(const string &chr) : LiteralExpr(chr) {};
+
    virtual void print();
 };
 
@@ -283,6 +314,7 @@ struct EmptyStatement : public Statement {
       no_semi = true;
       no_indent = true;
    };
+
    virtual void print() {};
 };
 
@@ -291,6 +323,7 @@ struct ConditionalStatement : public Statement {
    Block block;
 
    ConditionalStatement() : cond(NULL) {};
+   ~ConditionalStatement() {delete cond;}
 
    void push_back(Statement *stmt) {block.push_back(stmt);};
    Statement * &back() {return block.back();};
@@ -302,6 +335,7 @@ struct Else : public AstItem {
    Block block;
 
    Else() {no_semi = true;};
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -311,6 +345,7 @@ struct If : public ConditionalStatement {
    Else *_else;
 
    If() : _else(NULL) {no_semi = true;};
+   ~If() {delete _else;};
 
    virtual void print();
 
@@ -334,6 +369,7 @@ struct Case : public Block {
    bool is_default;
 
    Case(bool _is_default = false) : is_default(_is_default) {};
+
    void print();
 };
 
@@ -342,6 +378,8 @@ struct Switch : public Statement {
    vector<Case*> cases;
 
    Switch() : cond(NULL) {no_semi = true;};
+   ~Switch() {delete cond;};
+   
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -349,7 +387,10 @@ struct Switch : public Statement {
 
 struct Return : public Statement {
    Expression *expr;
+
    Return() : expr(NULL) {};
+   ~Return() {delete expr;};
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -384,6 +425,7 @@ struct Ternary : public Expression {
    Expression *_false;
 
    Ternary() : expr(NULL), _true(NULL), _false(NULL) {};
+   ~Ternary() {delete expr; delete _true; delete _false;};
 
    virtual void print();
 
