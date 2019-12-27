@@ -866,6 +866,16 @@ bool is_extern(const string &name) {
    return res;
 }
 
+bool address_of(const string &name, uint64_t *addr) {
+   bool res = false;
+   ea_t ea = get_name_ea(BADADDR, name.c_str());
+   if (ea == BADADDR) {
+      return false;
+   }
+   *addr = ea;
+   return true;
+}
+
 bool is_library_func(const string &name) {
    bool res = false;
    ea_t ea = get_name_ea(BADADDR, name.c_str());
@@ -878,6 +888,14 @@ bool is_library_func(const string &name) {
 
 bool is_named_addr(uint64_t ea, string &name) {
    qstring res;
+   //a sanity check on ea
+   segment_t *s = getseg(0);
+   if (s != NULL && ea < s->end_ea) {
+      //ea falls in first segment of zero based binary
+      //this are generally headers and ea is probably
+      //not a pointer but instead just a small number
+      return false;
+   }
    if (get_name(&res, (ea_t)ea) > 0) {
       name = res.c_str();
       return true;
@@ -945,6 +963,47 @@ void adjust_thunk_name(string &name) {
          }
       }
    }
+}
+
+//TODO think about sign extension for values smaller than 8 bytes
+bool get_value(uint64_t addr, uint64_t *val) {
+   flags_t f = get_full_flags(addr);
+   if (is_qword(f)) {
+      *val = get_qword(addr);
+   }
+   else if (is_dword(f)) {
+      *val = get_dword(addr);
+   }
+   else if (is_byte(f)) {
+      *val = get_byte(addr);
+   }
+   else if (is_word(f)) {
+      *val = get_word(addr);
+   }
+   else {
+      return false;
+   }
+   return true;
+}
+
+bool get_string(uint64_t addr, string &str) {
+   qstring res;
+   flags_t f = get_full_flags(addr);
+   if (is_strlit(f)) {
+      get_strlit_contents(&res, addr, -1, STRTYPE_C);
+      str = res.c_str();
+      return true;
+   }
+   else if (!is_data(f)) {
+      size_t maxlen = get_max_strlit_length(addr, STRTYPE_C);
+      if (maxlen > 4) {
+         create_strlit(addr, 0, STRTYPE_C);
+         get_strlit_contents(&res, addr, -1, STRTYPE_C);
+         str = res.c_str();
+         return true;
+      }
+   }
+   return false;
 }
 
 //--------------------------------------------------------------------------

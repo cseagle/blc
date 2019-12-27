@@ -94,11 +94,17 @@ bool is_pointer_var(uint64_t ea, uint32_t size, uint64_t *tgt);
 
 bool is_read_only(uint64_t ea);
 
+bool address_of(const string &name, uint64_t *ea);
+
 bool simplify_deref(const string &name, string &new_name);
 
 void adjust_thunk_name(string &name);
 
 void mips_setup(uint64_t start, uint64_t end);
+
+bool get_value(uint64_t addr, uint64_t *val);
+
+bool get_string(uint64_t addr, string &str);
 
 #endif
 

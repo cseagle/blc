@@ -303,7 +303,7 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
          if (doc) {
             string pretty;
             dump_el(doc->getRoot(), 0, pretty);
-//            msg("%s\n", pretty.c_str());
+            msg("%s\n", pretty.c_str());
 
             *result = func_from_xml(doc->getRoot(), start_ea);
 //            msg("%s\n", c_code.c_str());

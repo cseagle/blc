@@ -158,7 +158,7 @@ static void block_handler(const Element *el, Block *block);
 //static Statement *inner_block(const Element *child);
 static VarDecl *vardecl_handler(const Element *el);
 static Statement *statement_handler(const Element *el);
-static Expression *expr_handler(List::const_iterator &it, List::const_iterator &end, bool in_paren = false);
+static Expression *expr_handler(List::const_iterator &it, List::const_iterator &end, bool comma_ok = true);
 static Switch *switch_handler(List::const_iterator &it);
 static Else *else_handler(List::const_iterator &it);
 static DoWhile *do_handler(List::const_iterator &it);
@@ -186,6 +186,39 @@ bool is_keyword_color(const Element *el) {
 
 bool is_const_color(const Element *el) {
    return getAttributeValue(el, "color") == "const";
+}
+
+bool is_global_color(const Element *el) {
+   return getAttributeValue(el, "color") == "global";
+}
+
+void escape_string(const string &str, string &escaped) {
+   for (string::const_iterator i = str.cbegin(); i != str.cend(); i++) {
+      switch (*i) {
+         case '\n':
+            escaped += "\\n";
+            break;
+         case '\t':
+            escaped += "\\t";
+            break;
+         case '\\':
+            escaped += "\\";
+            break;
+         case '"':
+            escaped += "\\\"";
+            break;
+         default:
+            if (*i < 0x20 || *i == 0x7f) {
+               char buf[16];
+               snprintf(buf, sizeof(buf), "\\x%02x", *i & 0xff);
+               escaped += buf;
+            }
+            else{
+               escaped.push_back(*i);
+            }
+            break;
+      }
+   }
 }
 
 static const Element *find_child(const Element *el, const char *tag) {
@@ -302,7 +335,7 @@ void LiteralExpr::print() {
    line += val;
 }
 
-NameExpr::NameExpr(const string &var) : name(var) {
+NameExpr::NameExpr(const string &var, bool _global) : name(var), global(_global) {
    adjust_thunk_name(name);
 }
 
@@ -453,14 +486,20 @@ void TypeCast::rename(const string &oldname, const string &newname) {
    expr->rename(oldname, newname);
 }
 
-void NumericExpr::print() {
+void IntegerLiteral::print() {
    line.append(val);
 }
 
-void StringExpr::print() {
-   append_colored(COLOR_SYMBOL, "\"");
-   line.append(val);
-   append_colored(COLOR_SYMBOL, "\"");
+uint64_t IntegerLiteral::get_value() {
+   return strtoull(val.c_str(), NULL, 0);
+}
+
+void StringLiteral::print() {
+   append_colored(COLOR_DSTR, "\"");
+   string escaped;
+   escape_string(val, escaped);
+   append_colored(COLOR_DSTR, escaped);
+   append_colored(COLOR_DSTR, "\"");
 }
 
 void CharExpr::print() {
@@ -810,6 +849,73 @@ List::const_iterator find(List::const_iterator &it, const string &sym) {
    return res;
 }
 
+static bool is_const_expr(Expression *e, uint64_t *val) {
+   IntegerLiteral *num = dynamic_cast<IntegerLiteral*>(e);
+   if (num) {
+      *val = num->get_value();
+      dmsg("Found const expression (a) %s\n", num->val.c_str());
+      return true;
+   }
+   NameExpr *ne = dynamic_cast<NameExpr*>(e);
+   if (ne) {
+      char *endptr;
+      const char *s = ne->name.c_str();
+      *val = strtoull(s, &endptr, 0);
+      if (endptr != s && *endptr == 0) {
+         //name was a valid integer literal
+         dmsg("Found const expression (b) %s\n", s);
+         return true;
+      }
+      //not an int so see if name refers to const data
+      uint64_t addr;
+      if (ne->global && address_of(ne->name, &addr) && is_read_only(addr)) {
+         dmsg("Found const expression (d) %s\n", ne->name.c_str());
+         if (get_value(addr, val)) {
+            return true;
+         }
+      }
+      return false;
+   }
+   UnaryExpr *ue = dynamic_cast<UnaryExpr*>(e);
+   if (ue) {
+      if (is_const_expr(ue->expr, val)) {
+         uint64_t old = *val;
+         if (ue->op == "-") {
+            *val = 0 - *val;
+         }
+         else if (ue->op == "~") {
+            *val = ~*val;
+         }
+         else if (ue->op == "!") {
+            *val = !*val;
+         }
+         else {
+            return false;
+         }
+         dmsg("Found const expression (c) %s0x%lx\n", ue->op.c_str(), old);
+         return true;
+      }
+   }
+   return false;
+}
+
+static Expression *simplify_const(uint64_t cval) {
+   dmsg("simplify_const for 0x%lx\n", cval);
+   string val;
+   if (is_function_start(cval)) {
+      get_name(val, cval, 0);
+      return new FuncNameExpr(val);
+   }
+   if (get_string(cval, val)) {
+      dmsg("simplify_const became a string: %s\n", val.c_str());
+      return new StringLiteral(val);
+   }
+   if (is_named_addr(cval, val)) {
+      return new UnaryExpr("&", new NameExpr(val));
+   }
+   return NULL;
+}
+
 static Type *type_handler(const Element *el) {
    //map the type name here
    return new Type(el->getContent());
@@ -997,21 +1103,95 @@ static CastExpr *cast_handler(List::const_iterator &it, List::const_iterator &en
    return result;
 }
 
+Expression *make_name(const string &name, bool global) {
+   //add checks to see if name is a const, then convert to the const
+   //or whether name is a static string, then convert to quoted string
+   return new NameExpr(name, global);
+}
+
+Expression *make_variable(const Element *var) {
+   Expression *result = NULL;
+   const string &text = var->getContent();
+
+   //add checks to see if name is a const, then convert to the const
+   //or whether name is a static string, then convert to quoted string
+
+   if (is_const_color(var)) {
+      char *end;
+      uint64_t val = strtoull(text.c_str(), &end, 0);
+      if (*end == 0) {
+         dmsg("numeric literal: %s\n", text.c_str());
+         result = new IntegerLiteral(text);
+         Expression *e = simplify_const(val);
+         if (e) {
+            delete result;
+            result = e;
+         }
+      }
+      else {
+         dmsg("other literal: %s\n", text.c_str());
+         result = new LiteralExpr(text);
+      }
+   }
+   else if (is_global_color(var)) {
+      uint64_t addr;
+      if (address_of(text, &addr) && is_read_only(addr) && !is_function_start(addr)) {
+         //try to dereference this?
+         dmsg("const global: %s\n", text.c_str());
+         result = make_name(text, true);
+      }
+      else {
+         result = make_name(text, true);
+      }
+   }
+   else {
+      result = make_name(text, false);
+   }
+   return result;
+}
+
 static Expression *make_unary(const string &op, List::const_iterator &it, List::const_iterator &end) {
-   UnaryExpr *u = new UnaryExpr(op, expr_handler(it, end));
-   NameExpr *n = dynamic_cast<NameExpr*>(u->expr);
-   if (n && op == "*") {
-      dmsg("made unary expr: %s%s\n", op.c_str(), n->name.c_str());
-      string new_name;
-      if (simplify_deref(n->name, new_name)) {
-         delete u;
-         return new NameExpr(new_name);
+   UnaryExpr *u = new UnaryExpr(op, expr_handler(it, end, false));
+   if (op == "*") {
+      NameExpr *n = dynamic_cast<NameExpr*>(u->expr);
+      if (n) {
+         dmsg("made unary expr: %s%s\n", op.c_str(), n->name.c_str());
+         string new_name;
+         if (simplify_deref(n->name, new_name)) {
+            return make_name(new_name, n->global);
+            delete u;
+         }
       }
    }
    return u;
 }
 
-static Expression *expr_handler(List::const_iterator &it, List::const_iterator &end, bool in_paren) {
+static Expression *make_binary(const string &op, Expression *lhs, List::const_iterator &it, List::const_iterator &end) {
+   uint64_t v1;
+   uint64_t v2;
+   BinaryExpr *b = new BinaryExpr(op, lhs, expr_handler(it, end, false));
+   if (op == "+") {
+      if (is_const_expr(b->lhs, &v1) && is_const_expr(b->rhs, &v2)) {
+         Expression *e = simplify_const(v1 + v2);
+         if (e) {
+            delete b;
+            return e;
+         }
+      }
+   }
+   else if (op == "-") {
+      if (is_const_expr(b->lhs, &v1) && is_const_expr(b->rhs, &v2)) {
+         Expression *e = simplify_const(v1 - v2);
+         if (e) {
+            delete b;
+            return e;
+         }
+      }
+   }
+   return b;
+}
+
+static Expression *expr_handler(List::const_iterator &it, List::const_iterator &end, bool comma_ok) {
    static int ecount = 0;
    Expression *result = NULL;
    const string *open = NULL;
@@ -1029,7 +1209,7 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
       }
       switch (tag_map[child->getName()]) {
          case ast_tag_variable:
-            result = new NameExpr(child->getContent());
+            result = make_variable(child);
             break;
          case ast_tag_type: {
             CastExpr *cast = cast_handler(it, end);
@@ -1079,7 +1259,8 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
             }
             else if (binary_ops.find(op) != binary_ops.end() && result != NULL) {
                dmsg("expr_handler syntax building BinaryExpr for %s\n", op.c_str());
-               result = new BinaryExpr(op, result, expr_handler(++it, end));
+               result = make_binary(op, result, ++it, end);
+//               result = new BinaryExpr(op, result, expr_handler(++it, end));
                dmsg("   %s\n", debug_print(result));
             }
             else {
@@ -1090,7 +1271,7 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
                         char *end;
                         uint64_t val = strtoull(op.c_str(), &end, 0);
                         if (*end == 0) {
-                           result = new NumericExpr(op);
+                           result = new IntegerLiteral(op);
                         }
                         else {
                            result = new LiteralExpr(op);
@@ -1117,7 +1298,7 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
                            if (rp) {
                               NameExpr *rn = dynamic_cast<NameExpr*>(rp->inner);
                               if (rn) {
-                                 NameExpr *ne = new NameExpr(rn->name);
+                                 Expression *ne = make_name(rn->name, rn->global);
                                  delete rp;
                                  result = ne;
                               }
@@ -1153,7 +1334,7 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
                      dmsg("expr_handler out(6) %d - %p\n", --ecount, result);
                      return result;
                   }
-                  case g_comma: {
+                  case g_comma: { //never get here ??
                      Expression *rhs = expr_handler(++it, end);
                      result = new CommaExpr(result, rhs);
                      dmsg("expr_handler comma out(7) %d - %p\n", --ecount, result);
@@ -1184,11 +1365,12 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
             }
             else if (binary_ops.find(op) != binary_ops.end() && result != NULL) {
                dmsg("expr_handler op building BinaryExpr\n");
-               result = new BinaryExpr(op, result, expr_handler(++it, end));
+               result = make_binary(op, result, ++it, end);
+//               result = new BinaryExpr(op, result, expr_handler(++it, end));
                dmsg("expr_handler op building BinaryExpr(%p) for %s\n", result, op.c_str());
                dmsg("   %s\n", debug_print(result));
-               dmsg("expr_handler out %d(10) - %p\n", --ecount, result);
-               return result;
+               //dmsg("expr_handler out %d(10) - %p\n", --ecount, result);
+               //return result;
             }
             else {
                switch (ops[op]) {
@@ -1203,10 +1385,16 @@ static Expression *expr_handler(List::const_iterator &it, List::const_iterator &
                      dmsg("expr_handler out(11) %d\n", --ecount);
                      return result;
                   }
-                  case g_comma: {
-                     Expression *rhs = expr_handler(++it, end);
-                     result = new CommaExpr(result, rhs);
-                     dmsg("expr_handler out(12) %d\n", --ecount);
+                  case g_comma: {  //comma always shows up as an op?
+                     if (comma_ok) {
+                        Expression *rhs = expr_handler(++it, end);
+                        result = new CommaExpr(result, rhs);
+                        dmsg("expr_handler out(12) %d\n", --ecount);
+                     }
+                     else {
+                        it--;
+                        dmsg("expr_handler out(12.5) %d\n", --ecount);
+                     }
                      return result;
                   }
                   default:

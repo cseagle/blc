@@ -87,8 +87,9 @@ struct Expression : public AstItem {
 
 struct NameExpr : public Expression {
    string name;
+   bool global;
 
-   NameExpr(const string &var);
+   NameExpr(const string &var, bool _global = false);
 
    virtual void print();
 
@@ -105,7 +106,7 @@ struct FuncNameExpr : public NameExpr {
 };
 
 struct BinaryExpr : public Expression {
-   const string &op;
+   const string op;
    Expression *lhs;
    Expression *rhs;
 
@@ -118,7 +119,7 @@ struct BinaryExpr : public Expression {
 };
 
 struct UnaryExpr : public Expression {
-   const string &op;
+   const string op;
    Expression *expr;
 
    UnaryExpr(const string &unop, Expression *ex) : op(unop), expr(ex) {};
@@ -281,20 +282,22 @@ struct CallExpr : public Expression {
 };
 
 struct LiteralExpr : public Expression {
-   const string &val;
+   const string val;
    LiteralExpr(const string &literal) : val(literal) {};
 
    virtual void print();
 };
 
-struct NumericExpr : public LiteralExpr {
-   NumericExpr(const string &num) : LiteralExpr(num) {};
+struct IntegerLiteral : public LiteralExpr {
+   IntegerLiteral(const string &num) : LiteralExpr(num) {};
 
    virtual void print();
+   
+   uint64_t get_value();
 };
 
-struct StringExpr : public LiteralExpr {
-   StringExpr(const string &str) : LiteralExpr(str) {};
+struct StringLiteral : public LiteralExpr {
+   StringLiteral(const string &str) : LiteralExpr(str) {};
 
    virtual void print();
 };
