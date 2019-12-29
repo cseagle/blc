@@ -556,10 +556,17 @@ bool get_sleigh_id(string &sleigh) {
          break;
       case PLFM_JAVA:
          break;
-      case PLFM_MIPS:
+      case PLFM_MIPS: {
          //options include "R6" "micro" "64-32addr" "micro64-32addr" "64-32R6addr" "default"
-         sleigh += is_64 ? ":64:default" : ":32:default";
+         qstring abi;
+         if (get_abi_name(&abi) > 0 && abi.find("n32") == 0) {
+            sleigh += ":64:64-32addr";
+         }
+         else {
+            sleigh += is_64 ? ":64:default" : ":32:default";
+         }
          break;
+      }
       case PLFM_HPPA:
          break;
       case PLFM_PIC:
@@ -933,6 +940,9 @@ bool is_read_only(uint64_t ea) {
          return true;
       }
       if (sname.find("idata") <= 1) {
+         return true;
+      }
+      if (sname.find("rel.ro") != qstring::npos) {
          return true;
       }
    }
