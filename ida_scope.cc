@@ -253,11 +253,16 @@ string ida_scope::buildVariableName(const Address &addr,
                                  const Address &pc,
                                  Datatype *ct, int4 &index, uint4 flags) const {
    string name;
-   if (is_named_addr(addr.getOffset(), name)) {
-      return name;
+   uint64_t ea = addr.getOffset();
+   if (!is_named_addr(ea, name)) {
+      if (set_name(ea, "unk_", SN_AUTO | SN_NOWARN)) {
+         get_name(name, ea, 0);
+      }
+      else {
+         name = ScopeInternal::buildVariableName(addr, pc, ct, index, flags);
+      }
    }
-   name = ScopeInternal::buildVariableName(addr, pc, ct, index, flags);
-   dmsg("ida_scope::buildVariableName - 0x%zx -> %s\n", addr.getOffset(), name.c_str());
+   dmsg("ida_scope::buildVariableName - 0x%zx -> %s\n", ea, name.c_str());
    return name;
 }
 
