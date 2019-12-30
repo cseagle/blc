@@ -86,8 +86,8 @@ SRCS=action.cc address.cc architecture.cc ast.cc \
 	ruleaction.cc run.cc semantics.cc sleigh.cc \
 	sleigh_arch.cc sleighbase.cc slghpatexpress.cc \
 	slghpattern.cc slghsymbol.cc space.cc subflow.cc \
-	translate.cc type.cc typeop.cc userop.cc variable.cc \
-	varmap.cc varnode.cc xml.tab.cc
+	transform.cc translate.cc type.cc typeop.cc userop.cc \
+	variable.cc varmap.cc varnode.cc xml.tab.cc
 
 OBJS32 := $(patsubst %.cc, $(OBJDIR32)/%.o, $(SRCS) )
 OBJS64 := $(patsubst %.cc, $(OBJDIR64)/%.o, $(SRCS) )
