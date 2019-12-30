@@ -151,6 +151,7 @@ static set<string> binary_ops;
 static set<string> unary_ops;
 static map<string,op_keywords_t> op_map;
 static set<string> reserved;
+static map<string,string> type_map;
 
 static const string empty_string("");
 
@@ -916,9 +917,17 @@ static Expression *simplify_const(uint64_t cval) {
    return NULL;
 }
 
+const string &map_type(const string &type_name) {
+   if (type_map.find(type_name) != type_map.end()) {
+      return type_map[type_name];
+   }
+   return type_name;
+}
+
 static Type *type_handler(const Element *el) {
    //map the type name here
-   return new Type(el->getContent());
+   const string &type_name = el->getContent();
+   return new Type(map_type(type_name));
 }
 
 static Return *return_handler(List::const_iterator &it, List::const_iterator &end) {
@@ -1074,7 +1083,8 @@ static void funcproto_handler(const Element *el, Function *f) {
 static CastExpr *cast_handler(List::const_iterator &it, List::const_iterator &end) {
    dmsg("Entering cast_handler\n");
    const Element *child = get_child(it);
-   CastExpr *result = new CastExpr(child->getContent());  //map type name change here
+   const string &type_name = child->getContent();
+   CastExpr *result = new CastExpr(map_type(type_name));  //map type name change here
    while (++it < end) {
       child = get_child(it);
       if (child->getName() == "op") {
@@ -1949,6 +1959,21 @@ void init_maps(void) {
       reserved.insert("double");
       reserved.insert("void");
       reserved.insert("NULL");
+      
+      type_map["uint1"] = "uint8_t";
+      type_map["uint2"] = "uint16_t";
+      type_map["uint4"] = "uint32_t";
+      type_map["uint8"] = "uint64_t";
+      type_map["int1"] = "int8_t";
+      type_map["int2"] = "int16_t";
+      type_map["int4"] = "int32_t";
+      type_map["int8"] = "int64_t";
+      type_map["float4"] = "float";
+      type_map["float8"] = "double";
+      type_map["xunknown1"] = "__uint8";
+      type_map["xunknown2"] = "__uint16";
+      type_map["xunknown4"] = "__uint32";
+      type_map["xunknown8"] = "__uint64";
    }
 }
 
