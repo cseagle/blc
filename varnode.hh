@@ -116,7 +116,8 @@ public:
     ptrcheck = 0x10,	        ///< The Varnode value is \e NOT a pointer
     ptrflow = 0x20,             ///< If this varnode flows to or from a pointer
     unsignedprint = 0x40,	///< Constant that must be explicitly printed as unsigned
-    stack_store = 0x80		///< Created by an explicit STORE
+    stack_store = 0x80,		///< Created by an explicit STORE
+    locked_input = 0x100	///< Input that exists even if its unused
   };
 private:
   mutable uint4 flags;		///< The collection of boolean attributes for this Varnode
@@ -136,9 +137,9 @@ private:
   list<PcodeOp *> descend;		///< List of every op using this varnode as input
   mutable Cover *cover;		///< Addresses covered by the def->use of this Varnode
   mutable union {
-    Datatype *dataType;		///< For type propagate algorithm
-    ValueSet *valueSet;
-  } temp;
+    Datatype *dataType;		///< Temporary data-type associated with \b this for use in type propagate algorithm
+    ValueSet *valueSet;		///< Value set associated with \b this when performing Value Set Analysis
+  } temp;			///< Temporary storage for analysis algorithms
   uintb consumed;		///< What parts of this varnode are used
   uintb nzm;			///< Which bits do we know are zero
   friend class VarnodeBank;
@@ -237,6 +238,7 @@ public:
   bool isMark(void) const { return ((flags&Varnode::mark)!=0); } ///< Has \b this been visited by the current algorithm?
   bool isActiveHeritage(void) const { return ((addlflags&Varnode::activeheritage)!=0); } ///< Is \b this currently being traced by the Heritage algorithm?
   bool isStackStore(void) const { return ((addlflags&Varnode::stack_store)!=0); } ///< Was this originally produced by an explicit STORE
+  bool isLockedInput(void) const { return ((addlflags&Varnode::locked_input)!=0); }	///< Is always an input, even if unused
 
   /// Is \b this just a special placeholder representing INDIRECT creation?
   bool isIndirectZero(void) const { return ((flags&(Varnode::indirect_creation|Varnode::constant))==(Varnode::indirect_creation|Varnode::constant)); }
@@ -297,6 +299,7 @@ public:
   void setUnsignedPrint(void) { addlflags |= Varnode::unsignedprint; } ///< Force \b this to be printed as unsigned
   bool updateType(Datatype *ct,bool lock,bool override); ///< (Possibly) set the Datatype given various restrictions
   void setStackStore(void) { addlflags |= Varnode::stack_store; } ///< Mark as produced by explicit CPUI_STORE
+  void setLockedInput(void) { addlflags |= Varnode::locked_input; }	///< Mark as existing input, even if unused
   void copySymbol(const Varnode *vn); ///< Copy symbol info from \b vn
   void copySymbolIfValid(const Varnode *vn);	///< Copy symbol info from \b vn if constant value matches
   Datatype *getLocalType(void) const; ///< Calculate type of Varnode based on local information

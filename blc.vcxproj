@@ -282,6 +282,7 @@
     <ClCompile Include="slghsymbol.cc" />
     <ClCompile Include="space.cc" />
     <ClCompile Include="subflow.cc" />
+    <ClCompile Include="transform.cc" />
     <ClCompile Include="translate.cc" />
     <ClCompile Include="type.cc" />
     <ClCompile Include="typeop.cc" />
@@ -374,6 +375,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ast.hh" />
+    <ClInclude Include="transform.hh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

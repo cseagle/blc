@@ -369,7 +369,7 @@ uintb MemoryImage::find(uintb addr) const
     uint1 *ptr = (uint1 *)&res;
     ptr += (HOST_ENDIAN==1) ? (sizeof(uintb) - getWordSize()) : 0;
     loader->loadFill(ptr,getWordSize(),Address(spc,addr));
-  } catch(DataUnavailError &) {
+  } catch(DataUnavailError &err) {
     // Pages not mapped in the load image, are assumed to be zero
     res = 0;
   }
@@ -389,7 +389,7 @@ void MemoryImage::getPage(uintb addr,uint1 *res,int4 skip,int4 size) const
   try {
     loader->loadFill(res,size,Address(spc,addr+skip));
   }
-  catch(DataUnavailError &) {
+  catch(DataUnavailError &err) {
     // Pages not mapped in the load image, are assumed to be zero
     for(int4 i=0;i<size;++i)
       res[i] = 0;

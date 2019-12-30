@@ -15,7 +15,6 @@
  */
 #include "printc.hh"
 #include "funcdata.hh"
-#include "ida_minimal.hh"
 
 // Operator tokens for expressions
 //                        token #in prec assoc   optype       space bump
@@ -971,6 +970,18 @@ void PrintC::opNewOp(const PcodeOp *op)
   pushVnImplied(vn0,op,mods);
 }
 
+void PrintC::opInsertOp(const PcodeOp *op)
+
+{
+  opFunc(op);	// If no other way to print it, print as functional operator
+}
+
+void PrintC::opExtractOp(const PcodeOp *op)
+
+{
+  opFunc(op);	// If no other way to print it, print as functional operator
+}
+
 /// \brief Push a constant with an integer data-type to the RPN stack
 ///
 /// Various checks are made to see if the integer should be printed as an \e equate
@@ -1249,7 +1260,7 @@ bool PrintC::printCharacterConstant(ostream &s,const Address &addr,int4 charsize
       foundTerminator = hasCharTerminator(buffer+curBufferSize,STR_LITERAL_BUFFER_INCREMENT,charsize);
       curBufferSize = newBufferSize;
     } while ((curBufferSize < STR_LITERAL_BUFFER_MAXSIZE)&&(!foundTerminator));
-  } catch(DataUnavailError &) {
+  } catch(DataUnavailError &err) {
     return false;
   }
   buffer[curBufferSize] = 0;		// Make sure bytes for final codepoint read are initialized
@@ -2893,7 +2904,6 @@ string PrintC::genericFunctionName(const Address &addr)
 {
   ostringstream s;
 
-  msg("PrintC::genericFunctionName - 0x%x\n", (uint32_t)addr.getOffset());
   s << "func_";
   addr.printRaw(s);
   return s.str();

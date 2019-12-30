@@ -253,7 +253,7 @@ uintb AddrSpace::read(const string &s,int4 &size) const
       size = point.size;
     }
   }
-  catch(LowlevelError &) {	// Name doesn't exist
+  catch(LowlevelError &err) {	// Name doesn't exist
     offset = strtoul(s.c_str(),&tmpdata,0);
     offset = addressToByte(offset,wordsize);
     enddata = (const char *) tmpdata;
@@ -608,7 +608,7 @@ uintb JoinSpace::read(const string &s,int4 &size) const
     try {
       pieces.back() = getTrans()->getRegister(token);
     }
-    catch(LowlevelError &) {	// Name doesn't exist
+    catch(LowlevelError &err) {	// Name doesn't exist
       char shortcut = token[0];
       AddrSpace *spc = getManager()->getSpaceByShortcut(shortcut);
       if (spc == (AddrSpace *)0)

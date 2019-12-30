@@ -493,6 +493,11 @@ uintb PcodeOp::getNZMaskLocal(bool cliploop) const
     val = (getIn(1)->getNZMask()-1); // Result is less than modulus
     resmask = coveringmask(val);
     break;
+  case CPUI_POPCOUNT:
+    sz1 = popcount(getIn(0)->getNZMask());
+    resmask = coveringmask((uintb)sz1);
+    resmask &= fullmask;
+    break;
   case CPUI_SUBPIECE:
     resmask = getIn(0)->getNZMask();
     resmask >>= 8*getIn(1)->getOffset();
@@ -763,6 +768,24 @@ void PcodeOpBank::moveSequenceDead(PcodeOp *firstop,PcodeOp *lastop,PcodeOp *pre
   ++previter;
   if (previter != firstop->insertiter) // Check for degenerate move
     deadlist.splice(previter,deadlist,firstop->insertiter,enditer);
+}
+
+/// Incidental COPYs are not considered active use of parameter passing Varnodes by
+/// parameter analysis algorithms.
+/// \param firstop is the start of the range of incidental COPY ops
+/// \param lastop is the end of the range of incidental COPY ops
+void PcodeOpBank::markIncidentalCopy(PcodeOp *firstop,PcodeOp *lastop)
+
+{
+  list<PcodeOp *>::iterator iter = firstop->insertiter;
+  list<PcodeOp *>::iterator enditer = lastop->insertiter;
+  ++enditer;
+  while(iter != enditer) {
+    PcodeOp *op = *iter;
+    ++iter;
+    if (op->code() == CPUI_COPY)
+      op->setAdditionalFlag(PcodeOp::incidental_copy);
+  }
 }
 
 /// Find the first PcodeOp at or after the given Address assuming they have not

@@ -16,6 +16,7 @@
 #include "coreaction.hh"
 #include "condexe.hh"
 #include "double.hh"
+#include "subflow.hh"
 
 /// \brief A stack equation
 struct StackEqn {
@@ -494,6 +495,121 @@ int4 ActionStackPtrFlow::apply(Funcdata &data)
   return 0;
 }
 
+/// \brief Examine the PcodeOps using the given Varnode to determine possible lane sizes
+///
+/// Run through the defining op and any descendant ops of the given Varnode, looking for
+/// CPUI_PIECE and CPUI_SUBPIECE. Use these to determine possible lane sizes and
+/// register them with the given LanedRegister object.
+/// \param vn is the given Varnode
+/// \param allowedLanes is used to determine if a putative lane size is allowed
+/// \param checkLanes collects the possible lane sizes
+void ActionLaneDivide::collectLaneSizes(Varnode *vn,const LanedRegister &allowedLanes,LanedRegister &checkLanes)
+
+{
+  list<PcodeOp *>::const_iterator iter = vn->beginDescend();
+  int4 step = 0;		// 0 = descendants, 1 = def, 2 = done
+  if (iter == vn->endDescend()) {
+    step = 1;
+  }
+  while(step < 2) {
+    int4 curSize;		// Putative lane size
+    if (step == 0) {
+      PcodeOp *op = *iter;
+      ++iter;
+      if (iter == vn->endDescend())
+	step = 1;
+      if (op->code() != CPUI_SUBPIECE) continue;	// Is the big register split into pieces
+      curSize = op->getOut()->getSize();
+    }
+    else {
+      step = 2;
+      if (!vn->isWritten()) continue;
+      PcodeOp *op = vn->getDef();
+      if (op->code() != CPUI_PIECE) continue;		// Is the big register formed from smaller pieces
+      curSize = op->getIn(0)->getSize();
+      int4 tmpSize = op->getIn(1)->getSize();
+      if (tmpSize < curSize)
+	curSize = tmpSize;
+    }
+    if (allowedLanes.allowedLane(curSize))
+      checkLanes.addLaneSize(curSize);			// Register this possible size
+  }
+}
+
+/// \brief Search for a likely lane size and try to divide a single Varnode into these lanes
+///
+/// There are different ways to search for a lane size:
+///
+/// Mode 0: Collect putative lane sizes based on the local ops using the Varnode. Attempt
+/// to divide based on each of those lane sizes in turn.
+///
+/// Mode 1: Similar to mode 0, except we allow for SUBPIECE operations that truncate to
+/// variables that are smaller than the lane size.
+///
+/// Mode 2: Attempt to divide based on a default lane size.
+/// \param data is the function being transformed
+/// \param vn is the given single Varnode
+/// \param lanedRegister is acceptable set of lane sizes for the Varnode
+/// \param mode is the lane size search mode (0, 1, or 2)
+/// \return \b true if the Varnode (and its data-flow) was successfully split
+bool ActionLaneDivide::processVarnode(Funcdata &data,Varnode *vn,const LanedRegister &lanedRegister,int4 mode)
+
+{
+  LanedRegister checkLanes;		// Lanes we are going to try, initialized to no lanes
+  bool allowDowncast = (mode > 0);
+  if (mode < 2)
+    collectLaneSizes(vn,lanedRegister,checkLanes);
+  else {
+    checkLanes.addLaneSize(4);		// Default lane size
+  }
+  LanedRegister::const_iterator enditer = checkLanes.end();
+  for(LanedRegister::const_iterator iter=checkLanes.begin();iter!=enditer;++iter) {
+    int4 curSize = *iter;
+    LaneDescription description(lanedRegister.getWholeSize(),curSize);	// Lane scheme dictated by curSize
+    LaneDivide laneDivide(&data,vn,description,allowDowncast);
+    if (laneDivide.doTrace()) {
+      laneDivide.apply();
+      count += 1;		// Indicate a change was made
+      return true;
+    }
+  }
+  return false;
+}
+
+int4 ActionLaneDivide::apply(Funcdata &data)
+
+{
+  map<VarnodeData,const LanedRegister *>::const_iterator iter;
+  for(int4 mode=0;mode<3;++mode) {
+    bool allStorageProcessed = true;
+    for(iter=data.beginLaneAccess();iter!=data.endLaneAccess();++iter) {
+      const LanedRegister *lanedReg = (*iter).second;
+      Address addr = (*iter).first.getAddr();
+      int4 sz = (*iter).first.size;
+      VarnodeLocSet::const_iterator viter = data.beginLoc(sz,addr);
+      VarnodeLocSet::const_iterator venditer = data.endLoc(sz,addr);
+      bool allVarnodesProcessed = true;
+      while(viter != venditer) {
+	Varnode *vn = *viter;
+	if (processVarnode(data, vn, *lanedReg, mode)) {
+	  viter = data.beginLoc(sz,addr);
+	  venditer = data.endLoc(sz, addr);	// Recalculate bounds
+	  allVarnodesProcessed = true;
+	}
+	else {
+	  ++viter;
+	  allVarnodesProcessed = false;
+	}
+      }
+      if (!allVarnodesProcessed)
+	allStorageProcessed = false;
+    }
+    if (allStorageProcessed) break;
+  }
+  data.clearLanedAccessMap();
+  return 0;
+}
+
 int4 ActionSegmentize::apply(Funcdata &data)
 
 {
@@ -820,14 +936,20 @@ int4 ActionShadowVar::apply(Funcdata &data)
 
 /// \brief Determine if given Varnode might be a pointer constant.
 ///
-/// If it is a pointer, return the symbol it points to, or NULL otherwise.
+/// If it is a pointer, return the symbol it points to, or NULL otherwise. If it is determined
+/// that the Varnode is a pointer to a specific symbol, the encoding of the full pointer is passed back.
+/// Usually this is just the constant value of the Varnode, but in this case of partial pointers
+/// (like \e near pointers) the full pointer may contain additional information.
 /// \param spc is the address space being pointed to
 /// \param vn is the given Varnode
 /// \param op is the lone descendant of the Varnode
+/// \param slot is the slot index of the Varnode
 /// \param rampoint will hold the Address of the resolved symbol
+/// \param fullEncoding will hold the full pointer encoding being passed back
 /// \param data is the function being analyzed
 /// \return the recovered symbol or NULL
-SymbolEntry *ActionConstantPtr::isPointer(AddrSpace *spc,Varnode *vn,PcodeOp *op,Address &rampoint,uintb &fullEncoding,Funcdata &data)
+SymbolEntry *ActionConstantPtr::isPointer(AddrSpace *spc,Varnode *vn,PcodeOp *op,int4 slot,
+					  Address &rampoint,uintb &fullEncoding,Funcdata &data)
 
 {
   bool needexacthit;
@@ -849,7 +971,7 @@ SymbolEntry *ActionConstantPtr::isPointer(AddrSpace *spc,Varnode *vn,PcodeOp *op
       // A constant parameter or return value could be a pointer
       if (!glb->infer_pointers)
 	return (SymbolEntry *)0;
-      if (op->getSlot(vn)==0)
+      if (slot==0)
 	return (SymbolEntry *)0;
       break;
     case CPUI_COPY:
@@ -862,7 +984,6 @@ SymbolEntry *ActionConstantPtr::isPointer(AddrSpace *spc,Varnode *vn,PcodeOp *op
     case CPUI_INT_ADD:
       outvn = op->getOut();
       if (outvn->getType()->getMetatype()==TYPE_PTR) {
-	int4 slot = op->getSlot(vn);
 	// Is there another pointer base in this expression
 	if (op->getIn(1-slot)->getType()->getMetatype()==TYPE_PTR)
 	  return (SymbolEntry *)0; // If so, we are not a pointer
@@ -870,6 +991,10 @@ SymbolEntry *ActionConstantPtr::isPointer(AddrSpace *spc,Varnode *vn,PcodeOp *op
 	needexacthit = false;
       }
       else if (!glb->infer_pointers)
+	return (SymbolEntry *)0;
+      break;
+    case CPUI_STORE:
+      if (slot != 2)
 	return (SymbolEntry *)0;
       break;
     default:
@@ -944,7 +1069,7 @@ int4 ActionConstantPtr::apply(Funcdata &data)
       continue;
     Address rampoint;
     uintb fullEncoding;
-    entry = isPointer(rspc,vn,op,rampoint,fullEncoding,data);
+    entry = isPointer(rspc,vn,op,slot,rampoint,fullEncoding,data);
     vn->setPtrCheck();		// Set check flag AFTER searching for symbol
     if (entry != (SymbolEntry *)0) {
       data.spacebaseConstant(op,slot,entry,rampoint,fullEncoding,vn->getSize());
@@ -1020,14 +1145,30 @@ int4 ActionDeindirect::apply(Funcdata &data)
   return 0;
 }
 
+/// Check if the given Varnode has a matching LanedRegister record. If so, add its
+/// storage location to the given function's laned access list.
+/// \param data is the given function
+/// \param vn is the given Varnode
+void ActionVarnodeProps::markLanedVarnode(Funcdata &data,Varnode *vn)
+
+{
+  if (vn->isConstant()) return;
+  Architecture *glb = data.getArch();
+  const LanedRegister *lanedRegister  = glb->getLanedRegister(vn->getAddr(),vn->getSize());
+  if (lanedRegister != (const LanedRegister *)0)
+    data.markLanedVarnode(vn,lanedRegister);
+}
+
 int4 ActionVarnodeProps::apply(Funcdata &data)
 
 {
   Architecture *glb = data.getArch();
   bool cachereadonly = glb->readonlypropagate;
-  if (glb->userops.getVolatileRead() == (VolatileReadOp *)0) {
-    if (!cachereadonly)
-      return 0;			// Nothing to do to special properties
+  int4 minLanedSize = 1000000;		// Default size meant to filter no Varnodes
+  if (!data.isLanedRegComplete()) {
+    int4 sz = glb->getMinimumLanedRegisterSize();
+    if (sz > 0)
+      minLanedSize = sz;
   }
   VarnodeLocSet::const_iterator iter;
   Varnode *vn;
@@ -1036,6 +1177,9 @@ int4 ActionVarnodeProps::apply(Funcdata &data)
   while(iter != data.endLoc()) {
     vn = *iter++;		// Advance iterator in case vn is deleted
     if (vn->isAnnotation()) continue;
+    int4 vnSize = vn->getSize();
+    if (vnSize >= minLanedSize)
+      markLanedVarnode(data, vn);
     if (vn->hasActionProperty()) {
       if (cachereadonly&&vn->isReadOnly()) {
 	if (data.fillinReadOnly(vn)) // Try to replace vn with its lookup in LoadImage
@@ -1045,7 +1189,7 @@ int4 ActionVarnodeProps::apply(Funcdata &data)
 	if (data.replaceVolatile(vn))
 	  count += 1;		// Try to replace vn with pcode op
     }
-    else if (((vn->getNZMask() & vn->getConsume())==0)&&(vn->getSize()<=sizeof(uintb))) {
+    else if (((vn->getNZMask() & vn->getConsume())==0)&&(vnSize<=sizeof(uintb))) {
       // FIXME: uintb should be arbitrary precision
       if (vn->isConstant()) continue; // Don't replace a constant
       if (vn->isWritten()) {
@@ -1065,6 +1209,7 @@ int4 ActionVarnodeProps::apply(Funcdata &data)
       }
     }
   }
+  data.setLanedRegGenerated();
   return 0;
 }
 
@@ -1855,8 +2000,11 @@ int4 ActionLikelyTrash::apply(Funcdata &data)
 
     for(uint4 i=0;i<indlist.size();++i) {
       PcodeOp *op = indlist[i];
-      if (op->code() == CPUI_INDIRECT)
-	data.truncateIndirect(indlist[i]);
+      if (op->code() == CPUI_INDIRECT) {
+	// Trucate data-flow through INDIRECT, turning it into indirect creation
+	data.opSetInput(op,data.newConstant(op->getOut()->getSize(), 0),0);
+	data.markIndirectCreation(op,false);
+      }
       else if (op->code() == CPUI_INT_AND) {
 	data.opSetInput(op,data.newConstant(op->getIn(1)->getSize(),0),1);
       }
@@ -1874,7 +2022,7 @@ int4 ActionRestructureVarnode::apply(Funcdata &data)
   bool aliasyes = data.isJumptableRecoveryOn() ? false : (numpass != 0);
   l1->restructureVarnode(aliasyes);
   // Note the alias calculation, may not be very good on the first pass
-  if (data.updateFlags(l1,false))
+  if (data.syncVarnodesWithSymbols(l1,false))
     count += 1;
 
   numpass += 1;
@@ -1899,7 +2047,7 @@ int4 ActionRestructureHigh::apply(Funcdata &data)
 #endif
 
   l1->restructureHigh();
-  if (data.updateFlags(l1,true))
+  if (data.syncVarnodesWithSymbols(l1,true))
     count += 1;
   
 #ifdef OPACTION_DEBUG
@@ -2059,17 +2207,24 @@ int4 ActionSetCasts::apply(Funcdata &data)
     for(iter=bb->beginOp();iter!=bb->endOp();++iter) {
       op = *iter;
       if (op->notPrinted()) continue;
-      if (op->code() == CPUI_CAST) continue;
+      OpCode opc = op->code();
+      if (opc == CPUI_CAST) continue;
+      if (opc == CPUI_PTRADD) {	// Check for PTRADD that no longer fits its pointer
+	int4 sz = (int4)op->getIn(2)->getOffset();
+	TypePointer *ct = (TypePointer *)op->getIn(0)->getHigh()->getType();
+	if ((ct->getMetatype() != TYPE_PTR)||(ct->getPtrTo()->getSize() != AddrSpace::addressToByteInt(sz, ct->getWordSize())))
+	  data.opUndoPtradd(op,true);
+      }
       for(int4 i=0;i<op->numInput();++i) // Do input casts first, as output may depend on input
 	count += castInput(op,i,data,castStrategy);
-      if (op->code() == CPUI_LOAD) {
+      if (opc == CPUI_LOAD) {
 	TypePointer *ptrtype = (TypePointer *)op->getIn(1)->getHigh()->getType();
 	int4 valsize = op->getOut()->getSize();
 	if ((ptrtype->getMetatype()!=TYPE_PTR)||
 	    (ptrtype->getPtrTo()->getSize() != valsize))
 	  data.warning("Load size is inaccurate",op->getAddr());
       }
-      else if (op->code() == CPUI_STORE) {
+      else if (opc == CPUI_STORE) {
 	TypePointer *ptrtype = (TypePointer *)op->getIn(1)->getHigh()->getType();
 	int4 valsize = op->getIn(2)->getSize();
 	if ((ptrtype->getMetatype()!=TYPE_PTR)||
@@ -2877,14 +3032,24 @@ void ActionDeadCode::propagateConsumed(vector<Varnode *> &worklist)
 
   switch(op->code()) {
   case CPUI_INT_MULT:
+    b = coveringmask(outc);
+    if (op->getIn(1)->isConstant()) {
+      int4 leastSet = leastsigbit_set(op->getIn(1)->getOffset());
+      if (leastSet >= 0) {
+	a = calc_mask(vn->getSize()) >> leastSet;
+	a &= b;
+      }
+      else
+	a = 0;
+    }
+    else
+      a = b;
+    pushConsumed(a,op->getIn(0),worklist);
+    pushConsumed(b,op->getIn(1),worklist);
+    break;
   case CPUI_INT_ADD:
   case CPUI_INT_SUB:
-    a = outc | (outc>>1);	// Make sure all 1 bits below
-    a = a | (a>>2);		// highest 1 bit are set
-    a = a | (a>>4);
-    a = a | (a>>8);		
-    a = a | (a>>16);
-    a = a | (a>>32);
+    a = coveringmask(outc);	// Make sure value is filled out as a contiguous mask
     pushConsumed(a,op->getIn(0),worklist);
     pushConsumed(a,op->getIn(1),worklist);
     break;
@@ -3030,6 +3195,34 @@ void ActionDeadCode::propagateConsumed(vector<Varnode *> &worklist)
       a = op->getIn(0)->getNZMask() | op->getIn(1)->getNZMask();
     pushConsumed(a,op->getIn(0),worklist);
     pushConsumed(a,op->getIn(1),worklist);
+    break;
+  case CPUI_INSERT:
+    a = 1;
+    a <<= (int4)op->getIn(3)->getOffset();
+    a -= 1;	// Insert mask
+    pushConsumed(a,op->getIn(1),worklist);
+    a <<= (int4)op->getIn(2)->getOffset();
+    pushConsumed(outc & ~a, op->getIn(0), worklist);
+    b = (outc == 0) ? 0 : ~((uintb)0);
+    pushConsumed(b,op->getIn(2), worklist);
+    pushConsumed(b,op->getIn(3), worklist);
+    break;
+  case CPUI_EXTRACT:
+    a = 1;
+    a <<= (int4)op->getIn(2)->getOffset();
+    a -= 1;	// Extract mask
+    a &= outc;	// Consumed bits of mask
+    a <<= (int4)op->getIn(1)->getOffset();
+    pushConsumed(a,op->getIn(0),worklist);
+    b = (outc == 0) ? 0 : ~((uintb)0);
+    pushConsumed(b,op->getIn(1), worklist);
+    pushConsumed(b,op->getIn(2), worklist);
+    break;
+  case CPUI_POPCOUNT:
+    a = 16 * op->getIn(0)->getSize() - 1;	// Mask for possible bits that could be set
+    a &= outc;					// Of the bits that could be set, which are consumed
+    b = (a == 0) ? 0 : ~((uintb)0);		// if any consumed, treat all input bits as consumed
+    pushConsumed(b,op->getIn(0), worklist);
     break;
   default:
     a = (outc==0) ? 0 : ~((uintb)0); // all or nothing
@@ -3419,6 +3612,7 @@ int4 ActionPrototypeTypes::apply(Funcdata &data)
       ProtoParameter *param = data.getFuncProto().getParam(i);
       Varnode *vn = data.newVarnode( param->getSize(), param->getAddress());
       vn = data.setInputVarnode(vn);
+      vn->setLockedInput();
       if (topbl != (BlockBasic *)0)
 	extendInput(data,vn,param,topbl);
       if (ptr_size > 0) {
@@ -4472,6 +4666,7 @@ void universal_action(Architecture *conf)
 	actprop->addRule( new RuleIdentityEl("analysis") );
 	actprop->addRule( new RuleOrMask("analysis") );
 	actprop->addRule( new RuleAndMask("analysis") );
+	actprop->addRule( new RuleOrConsume("analysis") );
 	actprop->addRule( new RuleOrCollapse("analysis") );
 	actprop->addRule( new RuleAndOrLump("analysis") );
 	actprop->addRule( new RuleShiftBitops("analysis") );
@@ -4532,6 +4727,7 @@ void universal_action(Architecture *conf)
 	actprop->addRule( new RuleHumptyOr("analysis") );
 	actprop->addRule( new RuleNegateIdentity("analysis") );
 	actprop->addRule( new RuleSubNormal("analysis") );
+	actprop->addRule( new RulePositiveDiv("analysis") );
 	actprop->addRule( new RuleDivTermAdd("analysis") );
 	actprop->addRule( new RuleDivTermAdd2("analysis") );
 	actprop->addRule( new RuleDivOpt("analysis") );
@@ -4549,6 +4745,7 @@ void universal_action(Architecture *conf)
 	actprop->addRule( new RuleFloatRange("analysis") );
 	actprop->addRule( new RulePiece2Zext("analysis") );
 	actprop->addRule( new RulePiece2Sext("analysis") );
+	actprop->addRule( new RulePopcountBoolXor("analysis") );
 	actprop->addRule( new RuleSubvarAnd("subvar") );
 	actprop->addRule( new RuleSubvarSubpiece("subvar") );
 	actprop->addRule( new RuleSplitFlow("subvar") );
@@ -4575,6 +4772,7 @@ void universal_action(Architecture *conf)
 	conf->extra_pool_rules.clear(); // Rules are now absorbed into universal
       }
       actstackstall->addAction( actprop );
+      actstackstall->addAction( new ActionLaneDivide("base") );
       actstackstall->addAction( new ActionMultiCse("analysis") );
       actstackstall->addAction( new ActionShadowVar("analysis") );
       actstackstall->addAction( new ActionDeindirect("deindirect") );
@@ -4639,12 +4837,12 @@ void universal_action(Architecture *conf)
   act->addAction( new ActionHideShadow("merge") );
   act->addAction( new ActionCopyMarker("merge") );
   act->addAction( new ActionOutputPrototype("localrecovery") );
-  act->addAction( new ActionSetCasts("casts") );
   act->addAction( new ActionInputPrototype("fixateproto") );
   act->addAction( new ActionRestructureHigh("localrecovery") );
   act->addAction( new ActionMapGlobals("fixateglobals") );
   act->addAction( new ActionDynamicSymbols("dynamic") );
   act->addAction( new ActionNameVars("merge") );
+  act->addAction( new ActionSetCasts("casts") );
   act->addAction( new ActionFinalStructure("blockrecovery") );
   act->addAction( new ActionPrototypeWarnings("protorecovery") );
   act->addAction( new ActionStop("base") );

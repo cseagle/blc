@@ -519,11 +519,11 @@ int4 Funcdata::stageJumpTable(JumpTable *jt,PcodeOp *op,FlowInfo *flow)
     else
       jt->recoverAddresses(&partial); // Analyze partial to recover jumptable addresses
   }
-  catch(JumptableNotReachableError &) {
+  catch(JumptableNotReachableError &err) {
     glb->allacts.setCurrent(oldactname);
     return 3;
   }
-  catch(JumptableThunkError &) {
+  catch(JumptableThunkError &err) {
     glb->allacts.setCurrent(oldactname);
     return 2;
   }

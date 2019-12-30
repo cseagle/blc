@@ -286,6 +286,21 @@ void Funcdata::destroyVarnode(Varnode *vn)
   vbank.destroy(vn);
 }
 
+/// Record the given Varnode as a potential laned register access.
+/// The address and size of the Varnode is recorded, anticipating that new
+/// Varnodes at the same storage location may be created
+/// \param vn is the given Varnode to mark
+/// \param lanedReg is the laned register record to associate with the Varnode
+void Funcdata::markLanedVarnode(Varnode *vn,const LanedRegister *lanedReg)
+
+{
+  VarnodeData storage;
+  storage.space = vn->getSpace();
+  storage.offset = vn->getOffset();
+  storage.size = vn->getSize();
+  lanedMap[storage] = lanedReg;
+}
+
 /// Look up the Symbol visible in \b this function's Scope and return the HighVariable
 /// associated with it.  If the Symbol doesn't exist or there is no Varnode holding at least
 /// part of the value of the Symbol, NULL is returned.
@@ -479,34 +494,22 @@ void Funcdata::setHighLevel(void)
     assignHigh(*iter);
 }
 
-/// \brief Create two new Varnodes which split the given Varnode
+/// \brief Copy properties from an existing Varnode to a new Varnode
 ///
-/// Attributes are copied from the original into the split pieces if appropriate
-/// \param vn is the given Varnode
-/// \param lowsize is the desired size in bytes of the least significant portion
-/// \param vnlo will hold the least significant portion
-/// \param vnhi will hold the most significant portion
-void Funcdata::splitVarnode(Varnode *vn,int4 lowsize,Varnode *& vnlo,Varnode *& vnhi)
+/// The new Varnode is assumed to overlap the storage of the existing Varnode.
+/// Properties like boolean flags and \e consume bits are copied as appropriate.
+/// \param vn is the existing Varnode
+/// \param newVn is the new Varnode that has its properties set
+/// \param lsbOffset is the significance offset of the new Varnode within the exising
+void Funcdata::transferVarnodeProperties(Varnode *vn,Varnode *newVn,int4 lsbOffset)
 
 {
-  int4 highsize = vn->getSize() - lowsize;
-  Address addrhi = vn->getAddr();
-  Address addrlo = addrhi;
-  uintb consumehi = vn->getConsume() >> 8*lowsize;
-  uintb consumelo = vn->getConsume() & calc_mask(lowsize);
-  if (vn->getSpace()->isBigEndian())
-    addrlo = addrhi + highsize;
-  else
-    addrhi = addrhi + lowsize;
+  uintb newConsume = (vn->getConsume() >> 8*lsbOffset) & calc_mask(newVn->getSize());
 
-  uint4 vnflags = vn->getFlags() & (Varnode::directwrite|Varnode::addrforce|Varnode::auto_live);
-  vnhi = newVarnode(highsize,addrhi);
-  vnlo = newVarnode(lowsize,addrlo);
+  uint4 vnFlags = vn->getFlags() & (Varnode::directwrite|Varnode::addrforce|Varnode::auto_live);
 
-  vnhi->setFlags(vnflags);	// Preserve addrforce setting
-  vnlo->setFlags(vnflags);
-  vnhi->setConsume(consumehi);
-  vnlo->setConsume(consumelo);
+  newVn->setFlags(vnFlags);	// Preserve addrforce setting
+  newVn->setConsume(newConsume);
 }
 
 /// Treat the given Varnode as read-only, look up its value in LoadImage
@@ -535,11 +538,14 @@ bool Funcdata::fillinReadOnly(Varnode *vn)
     return false;		// No change was made
   }
 
+  if (vn->getSize() > sizeof(uintb))
+    return false;		// Constant will exceed precision
+
   uintb res;
   uint1 bytes[32];
   try {
     glb->loader->loadFill(bytes,vn->getSize(),vn->getAddr());
-  } catch(DataUnavailError &) { // Could not get value from LoadImage
+  } catch(DataUnavailError &err) { // Could not get value from LoadImage
     vn->clearFlags(Varnode::readonly); // Treat as writeable
     return true;
   }
@@ -711,12 +717,9 @@ void Funcdata::clearDeadVarnodes(void)
   while(iter!=vbank.endLoc()) {
     vn = *iter++;
     if (vn->hasNoDescend()) {
-      if (vn->isInput()&&(!vn->isMark())) {
-	if ((vn->isSpacebase())|| // Space base is always typelocked
-	    (!vn->isTypeLock())) {
-	  vbank.makeFree(vn);
-	  vn->clearCover();
-	}
+      if (vn->isInput() && !vn->isLockedInput()) {
+	vbank.makeFree(vn);
+	vn->clearCover();
       }
       if (vn->isFree())
 	vbank.destroy(vn);
@@ -803,15 +806,16 @@ void Funcdata::calcNZMask(void)
   }
 }
 
-/// \brief Update Varnode boolean properties based on (new) Symbol information
+/// \brief Update Varnode properties based on (new) Symbol information
 ///
 /// Boolean properties \b addrtied, \b addrforce, \b auto_live, and \b nolocalalias
 /// for Varnodes are updated based on new Symbol information they map to.
-/// The caller can elect to update data-type information as well.
+/// The caller can elect to update data-type information as well, where Varnodes
+/// and their associated HighVariables have their data-type finalized based symbols.
 /// \param lm is the Symbol scope within which to search for mapped Varnodes
 /// \param typesyes is \b true if the caller wants to update data-types
 /// \return \b true if any Varnode was updated
-bool Funcdata::updateFlags(const ScopeLocal *lm,bool typesyes)
+bool Funcdata::syncVarnodesWithSymbols(const ScopeLocal *lm,bool typesyes)
 
 {
   bool updateoccurred = false;
@@ -859,13 +863,13 @@ bool Funcdata::updateFlags(const ScopeLocal *lm,bool typesyes)
       else
 	flags = 0;
     }
-    if (updateFlags(iter,flags,ct))
+    if (syncVarnodesWithSymbol(iter,flags,ct))
 	updateoccurred = true;
   }
   return updateoccurred;
 }
 
-/// \brief Update boolean properties (and the data-type) for a set of Varnodes
+/// \brief Update properties (and the data-type) for a set of Varnodes associated with one Symbol
 ///
 /// The set of Varnodes with the same size and address all have their boolean properties
 /// updated to the given values. The set is specified by providing an iterator reference
@@ -882,7 +886,7 @@ bool Funcdata::updateFlags(const ScopeLocal *lm,bool typesyes)
 /// \param flags holds the new set of boolean properties
 /// \param ct is the given data-type to set (or NULL)
 /// \return \b true if at least one Varnode was modified
-bool Funcdata::updateFlags(VarnodeLocSet::const_iterator &iter,uint4 flags,Datatype *ct)
+bool Funcdata::syncVarnodesWithSymbol(VarnodeLocSet::const_iterator &iter,uint4 flags,Datatype *ct)
 
 {
   VarnodeLocSet::const_iterator enditer;
@@ -914,9 +918,11 @@ bool Funcdata::updateFlags(VarnodeLocSet::const_iterator &iter,uint4 flags,Datat
       vn->setFlags(flags);
       vn->clearFlags((~flags)&mask);
     }
-    if (ct != (Datatype *)0)
+    if (ct != (Datatype *)0) {
       if (vn->updateType(ct,false,false))
 	updateoccurred = true;
+      vn->getHigh()->finalizeDatatype(ct);	// Permanently set the data-type on the HighVariable
+    }
   } while(iter != enditer);
   return updateoccurred;
 }
@@ -1341,13 +1347,7 @@ bool Funcdata::ancestorOpUse(int4 maxlevel,const Varnode *invn,
 
     return false;
   case CPUI_COPY:
-    if ((invn->getSpace()->getType()==IPTR_INTERNAL)||(invn->isAddrForce())) {
-				// Bit of a kludge to take into account
-				// uniq <- LOAD             uniq=stackX
-				//                  <->
-				// call(  uniq )            call( uniq )
-				// 
-				// We follow copys into uniques
+    if ((invn->getSpace()->getType()==IPTR_INTERNAL)||def->isIncidentalCopy()||def->getIn(0)->isIncidentalCopy()) {
       if (!ancestorOpUse(maxlevel-1,def->getIn(0),op,trial)) return false;
       return true;
     }
@@ -1442,7 +1442,8 @@ int4 AncestorRealistic::enterNode(State &state)
   case CPUI_SUBPIECE:
     // Extracting to a temporary, or to the same storage location, or otherwise incidental
     // are viewed as just another node on the path to traverse
-    if (op->getOut()->getSpace()->getType()==IPTR_INTERNAL||op->getIn(0)->isIncidentalCopy()
+    if (op->getOut()->getSpace()->getType()==IPTR_INTERNAL
+	|| op->isIncidentalCopy() || op->getIn(0)->isIncidentalCopy()
 	|| (op->getOut()->overlap(*op->getIn(0)) == (int4)op->getIn(1)->getOffset())) {
       stateStack.push_back(State(op,0));
       return enter_node;		// Push into the new node
@@ -1461,7 +1462,8 @@ int4 AncestorRealistic::enterNode(State &state)
   case CPUI_COPY:
     // Copies to a temporary, or between varnodes with same storage location, or otherwise incidental
     // are viewed as just another node on the path to traverse
-    if (op->getOut()->getSpace()->getType()==IPTR_INTERNAL||op->getIn(0)->isIncidentalCopy()
+    if (op->getOut()->getSpace()->getType()==IPTR_INTERNAL
+	|| op->isIncidentalCopy() || op->getIn(0)->isIncidentalCopy()
 	|| (op->getOut()->getAddr() == op->getIn(0)->getAddr())) {
       stateStack.push_back(State(op,0));
       return enter_node;		// Push into the new node
@@ -1471,7 +1473,7 @@ int4 AncestorRealistic::enterNode(State &state)
     do {
       Varnode *vn = op->getIn(0);
       if ((!vn->isMark())&&(vn->isInput())) {
-	if (vn->isUnaffected()||(!vn->isDirectWrite()))
+	if (!vn->isDirectWrite())
 	  return pop_fail;
       }
       op = vn->getDef();

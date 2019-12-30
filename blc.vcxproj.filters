@@ -243,6 +243,9 @@
     <ClCompile Include="ast.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="transform.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="action.hh">
@@ -485,6 +488,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ast.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="transform.hh">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
