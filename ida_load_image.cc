@@ -31,7 +31,12 @@ ida_load_image::ida_load_image(ida_arch *a) : LoadImage("ida_progam") {
 }
 
 void ida_load_image::loadFill(uint1 *ptr, int4 size, const Address &inaddr) {
-   get_bytes(ptr, size, inaddr.getOffset());
+    if (!get_bytes(ptr, size, inaddr.getOffset())) {
+        ostringstream errmsg;
+        errmsg << "Unable to load " << dec << size << " bytes at " << inaddr.getShortcut();
+        inaddr.printRaw(errmsg);
+        throw DataUnavailError(errmsg.str());
+    }
 }
 
 string ida_load_image::getArchType(void) const {
