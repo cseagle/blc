@@ -270,7 +270,14 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 
       arch->allacts.getCurrent()->reset(*fd);
 
-      res = arch->allacts.getCurrent()->perform(*fd);
+      try {
+          res = arch->allacts.getCurrent()->perform(*fd);
+      }
+      catch (DataUnavailError &err) {
+          msg("Could not decompile function at 0x%x\n - %s", start_ea, err.explain.c_str());
+          check_err_stream();
+          return -1;
+      }
 
       if (res < 0) {
          ostringstream os;
