@@ -571,8 +571,14 @@ bool get_sleigh_id(string &sleigh) {
          break;
       case PLFM_PIC:
          break;
-      case PLFM_PPC:
-         break;
+      case PLFM_PPC: {
+        // ABI name is set to "xbox" for X360 PPC executables
+        qstring abi;
+        if (get_abi_name(&abi) > 0 && abi.find("xbox") == 0) {
+          sleigh += ":64:VLE-32addr";
+        }
+        break;
+      }
       case PLFM_SPARC:
          break;
       case PLFM_MSP430:
