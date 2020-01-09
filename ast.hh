@@ -49,18 +49,23 @@ struct AstItem {
    static void color_on(char tag);
    static void color_off(char tag);
 
-   //index into line doscounting color codes
+   //index into line discounting color codes
    static size_t line_index;
 
-   int line_no;
+   int line_begin;
+   int line_end;
    int col_start;
    int col_end;
    char color;
    bool no_indent;
    bool no_semi;
-   bool is_prefix;
 
    AstItem();
+
+   void print_in();
+   void print_out();
+   
+   void do_print();
 
    virtual void print() = 0;
 
@@ -73,9 +78,15 @@ struct Statement : public AstItem {
 };
 
 struct Type : public AstItem {
+   vector<uint32_t> dims;
    string name;
-   Type(const string &_name) : name(_name) {};
+   uint32_t ptr;
+   bool is_const;
+   bool is_cast;
+   
+   Type(const string &_name) : name(_name), ptr(0), is_const(false), is_cast(false) {};
    virtual void print();
+   virtual void print(const string &var);
 
    virtual void rename(const string &oldname, const string &newname);
 };
@@ -204,8 +215,8 @@ struct Block : public AstItem {
 
 struct VarDecl : public Statement {
    Type *type;
-   Expression *var;
-//   string name;
+   //Expression *var;
+   NameExpr *var;
    Expression *init;
 
    VarDecl() : type(NULL), var(NULL), init(NULL) {};
@@ -233,12 +244,11 @@ struct Funcproto : public AstItem {
 };
 
 struct CastExpr : public Expression {
-   string type;
-   size_t deref;
+   Type *type;
 
-   CastExpr(const string &typ) : type(typ), deref(0) {
-      is_prefix = true;
-   };
+   CastExpr(const string &typ);
+   ~CastExpr();
+   
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -373,7 +383,7 @@ struct Case : public Block {
 
    Case(bool _is_default = false) : is_default(_is_default) {};
 
-   void print();
+   virtual void print();
 };
 
 struct Switch : public Statement {
@@ -454,5 +464,8 @@ class Element;
 Function *func_from_xml(Element *el, uint64_t addr);
 
 bool is_reserved(const string &word);
+
+VarDecl *find_decl(Function *ast, const string &sword);
+VarDecl *find_decl(Function *ast, int col, int line);
 
 #endif
