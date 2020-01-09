@@ -307,6 +307,7 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 
             *result = func_from_xml(doc->getRoot(), start_ea);
 //            msg("%s\n", c_code.c_str());
+            delete doc;
          }
       }
       check_err_stream();

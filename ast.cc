@@ -242,14 +242,14 @@ static const Element *get_child(List::const_iterator &it) {
 const char *debug_print(AstItem *exp) {
    string l = exp->line;
    exp->line.clear();
-   exp->print();
+   exp->do_print();
    string r = exp->line;
    exp->line = l;
    return tag_remove(r.c_str());
 }
 
-AstItem::AstItem() : no_indent(false), no_semi(false), is_prefix(false),
-                     line_no(1), col_start(-1), col_end(-1),
+AstItem::AstItem() : no_indent(false), no_semi(false), line_begin(1),
+                     line_end(1), col_start(-1), col_end(-1),
                      color(COLOR_DEFAULT) {};
 
 vector<string> *AstItem::cfunc;
@@ -262,7 +262,9 @@ void AstItem::flush(bool no_indent) {
    if (!no_indent) {
       spaces.append(indent, ' ');
    }
-   cfunc->push_back(spaces + line);
+   if (cfunc) {
+      cfunc->push_back(spaces + line);
+   }
 //   dmsg("append: %s\n", cfunc->back().c_str());
    line.clear();
    line_index = 0;
@@ -302,11 +304,31 @@ void AstItem::append_colored(char tag, const string &v) {
    color_off(tag);
 }
 
+void AstItem::print_in() {
+   if (cfunc) {
+      line_begin = cfunc->size();
+      col_start = line_index;
+   }
+}
+
+void AstItem::print_out() {
+   if (cfunc) {
+      line_end = cfunc->size();
+      col_end = line_index;
+   }
+}
+
+void AstItem::do_print() {
+   print_in();
+   print();
+   print_out();
+}
+
 void brace_print(AstItem &item, bool final_append = true) {
    AstItem::append_colored(COLOR_SYMBOL, LBRACE);
    AstItem::flush();
    AstItem::indent += 3;
-   item.print();
+   item.do_print();
    AstItem::indent -= 3;
    AstItem::append_colored(COLOR_SYMBOL, RBRACE);
    if (final_append) {
@@ -319,7 +341,42 @@ void Statement::print() {
 }
 
 void Type::print() {
+   print("");
+}
+
+void Type::print(const string &var) {
+   bool need_space = true;
+   print_in();
+   if (is_const) {
+      append_colored(COLOR_KEYWORD, "const ");
+   }
    append_colored(COLOR_KEYWORD, name);
+   if (ptr) {
+      if (!is_cast) {
+         append(' ');
+      }
+      color_on(COLOR_SYMBOL);
+      line.append(ptr, '*');
+      line_index += ptr;
+      color_off(COLOR_SYMBOL);
+      need_space = false;
+   }
+   if (var.length() > 0) {
+      if (need_space) {
+         append(' ');
+      }
+      append_colored(COLOR_DNAME, var);
+   }
+   for (vector<uint32_t>::iterator i = dims.begin(); i != dims.end(); i++) {
+      append_colored(COLOR_SYMBOL, LBRACKET);
+      if (*i) {
+         char buf[32];
+         snprintf(buf, sizeof(buf), "%u", *i);
+         append_colored(COLOR_NUMBER, buf);
+      }
+      append_colored(COLOR_SYMBOL, RBRACKET);
+   }
+   print_out();
 }
 
 void Type::rename(const string &oldname, const string &newname) {
@@ -329,11 +386,11 @@ void Type::rename(const string &oldname, const string &newname) {
 }
 
 void Expression::print() {
-   line += "<expr>";
+   append("<expr>");
 }
 
 void LiteralExpr::print() {
-   line += val;
+   append(val);
 }
 
 NameExpr::NameExpr(const string &var, bool _global) : name(var), global(_global) {
@@ -350,7 +407,7 @@ void NameExpr::print() {
 }
 
 void NameExpr::rename(const string &oldname, const string &newname) {
-   dmsg("NameExpr::rename %s from %s to %s\n", name.c_str(), oldname.c_str(), newname.c_str());
+//   dmsg("NameExpr::rename %s from %s to %s\n", name.c_str(), oldname.c_str(), newname.c_str());
    if (oldname == name) {
       name = newname;
    }
@@ -375,7 +432,7 @@ void FuncNameExpr::rename(const string &oldname, const string &newname) {
 }
 
 void LabelExpr::print() {
-   line += label;
+   append(label);
 }
 
 void LabelExpr::rename(const string &oldname, const string &newname) {
@@ -398,7 +455,7 @@ void LabelStatement::rename(const string &oldname, const string &newname) {
 void GotoStatement::print() {
    append_colored(COLOR_KEYWORD, GOTO);
    append(' ');
-   label->print();
+   label->do_print();
 }
 
 void GotoStatement::rename(const string &oldname, const string &newname) {
@@ -414,7 +471,7 @@ ExprStatement::~ExprStatement() {
 }
 
 void ExprStatement::print() {
-   expr->print();
+   expr->do_print();
 }
 
 void ExprStatement::rename(const string &oldname, const string &newname) {
@@ -427,10 +484,10 @@ CommaExpr::~CommaExpr() {
 }
 
 void CommaExpr::print() {
-   lhs->print();
+   lhs->do_print();
    append_colored(COLOR_SYMBOL, COMMA);
    append(' ');
-   rhs->print();
+   rhs->do_print();
 }
 
 void CommaExpr::rename(const string &oldname, const string &newname) {
@@ -439,13 +496,11 @@ void CommaExpr::rename(const string &oldname, const string &newname) {
 }
 
 void BinaryExpr::print() {
-   lhs->print();
-   line += ' ';
-   color_on(COLOR_SYMBOL);
-   line += op;
-   color_off(COLOR_SYMBOL);
-   line += ' ';
-   rhs->print();
+   lhs->do_print();
+   append(' ');
+   append_colored(COLOR_SYMBOL, op);
+   append(' ');
+   rhs->do_print();
 }
 
 void BinaryExpr::rename(const string &oldname, const string &newname) {
@@ -454,32 +509,34 @@ void BinaryExpr::rename(const string &oldname, const string &newname) {
 }
 
 void UnaryExpr::print() {
-   color_on(COLOR_SYMBOL);
-   line += op;
-   color_off(COLOR_SYMBOL);
-   expr->print();
+   append_colored(COLOR_SYMBOL, op);
+   expr->do_print();
 }
 
 void UnaryExpr::rename(const string &oldname, const string &newname) {
    expr->rename(oldname, newname);
 }
 
+CastExpr::CastExpr(const string &typ) {
+   type = new Type(typ);
+   type->is_cast = true;
+}
+
+CastExpr::~CastExpr() {
+   delete type;
+}
+
 void CastExpr::print() {
-   line += type;
-   color_on(COLOR_SYMBOL);
-   line.append(deref, '*');
-   color_off(COLOR_SYMBOL);
+   type->do_print();
 }
 
 void CastExpr::rename(const string &oldname, const string &newname) {
-   if (oldname == type) {
-      type = newname;
-   }
+   type->rename(oldname, newname);
 }
 
 void TypeCast::print() {
-   type->print();
-   expr->print();
+   type->do_print();
+   expr->do_print();
 }
 
 void TypeCast::rename(const string &oldname, const string &newname) {
@@ -488,7 +545,7 @@ void TypeCast::rename(const string &oldname, const string &newname) {
 }
 
 void IntegerLiteral::print() {
-   line.append(val);
+   append(val);
 }
 
 uint64_t IntegerLiteral::get_value() {
@@ -505,29 +562,29 @@ void StringLiteral::print() {
 
 void CharExpr::print() {
    append_colored(COLOR_SYMBOL, "'");
-   line.append(val);
+   append(val);
    append_colored(COLOR_SYMBOL, "'");
 }
 
 void ParenExpr::print() {
    append_colored(COLOR_SYMBOL, LPAREN);
    if (inner) {
-      inner->print();
+      inner->do_print();
    }
    append_colored(COLOR_SYMBOL, RPAREN);
 }
 
 void ParenExpr::rename(const string &oldname, const string &newname) {
    if (inner) {
-      dmsg("ParenExpr::rename from %s to %s\n", oldname.c_str(), newname.c_str());
+//      dmsg("ParenExpr::rename from %s to %s\n", oldname.c_str(), newname.c_str());
       inner->rename(oldname, newname);
    }
 }
 
 void ArrayExpr::print() {
-   array->print();
+   array->do_print();
    append_colored(COLOR_SYMBOL, LBRACKET);
-   index->print();
+   index->do_print();
    append_colored(COLOR_SYMBOL, RBRACKET);
 }
 
@@ -540,7 +597,7 @@ void Block::print() {
    for (vector<Statement*>::iterator i = block.begin(); i != block.end(); i++) {
       Statement *s = *i;
       if (s) {
-         s->print();
+         s->do_print();
       }
       else {
          dmsg("Attempting to print a NULL Statement\n");
@@ -562,16 +619,14 @@ void Block::rename(const string &oldname, const string &newname) {
    for (vector<Statement*>::iterator i = block.begin(); i != block.end(); i++) {
       Statement *s = *i;
       if (s) {
-         dmsg("Block::rename from %s to %s\n", oldname.c_str(), newname.c_str());
+//         dmsg("Block::rename from %s to %s\n", oldname.c_str(), newname.c_str());
          s->rename(oldname, newname);
       }
    }
 }
 
 void VarDecl::print() {
-   type->print();
-   append(' ');
-   var->print();
+   type->print(var->name);
 }
 
 const string &VarDecl::getName() {
@@ -616,20 +671,20 @@ VarDecl::~VarDecl() {
 }
 
 void Funcproto::print() {
-   return_type->print();
+   return_type->do_print();
    for (vector<string>::iterator i = keywords.begin(); i != keywords.end(); i++) {
       append(' ');
-      line += *i;
+      append(*i);
    }
    append(' ');
-   line += name;
+   append(name);
    append_colored(COLOR_SYMBOL, LPAREN);
    for (vector<VarDecl*>::iterator i = parameters.begin(); i != parameters.end(); i++) {
       if (i != parameters.begin()) {
          append_colored(COLOR_SYMBOL, COMMA);
          append(' ');
       }
-      (*i)->print();
+      (*i)->do_print();
    }
    append_colored(COLOR_SYMBOL, RPAREN);
 }
@@ -657,12 +712,12 @@ CallExpr::~CallExpr() {
 }
 
 void CallExpr::print() {
-   func->print();
-   args->print();
+   func->do_print();
+   args->do_print();
 }
 
 void CallExpr::rename(const string &oldname, const string &newname) {
-   dmsg("CallExpr::rename from %s to %s\n", oldname.c_str(), newname.c_str());
+//   dmsg("CallExpr::rename from %s to %s\n", oldname.c_str(), newname.c_str());
    func->rename(oldname, newname);
    args->rename(oldname, newname);
 }
@@ -681,12 +736,12 @@ void If::print() {
    append_colored(COLOR_KEYWORD, IF);
    append(' ');
    append_colored(COLOR_SYMBOL, LPAREN);
-   cond->print();
+   cond->do_print();
    append_colored(COLOR_SYMBOL, RPAREN);
    append(' ');
    brace_print(block, _else != NULL);
    if (_else) {
-      _else->print();
+      _else->do_print();
    }
 }
 
@@ -698,7 +753,7 @@ void If::rename(const string &oldname, const string &newname) {
 }
 
 void ConditionalStatement::rename(const string &oldname, const string &newname) {
-   dmsg("ConditionalStatement::rename from %s to %s\n", oldname.c_str(), newname.c_str());
+//   dmsg("ConditionalStatement::rename from %s to %s\n", oldname.c_str(), newname.c_str());
    cond->rename(oldname, newname);
    block.rename(oldname, newname);
 }
@@ -707,7 +762,7 @@ void While::print() {
    append_colored(COLOR_KEYWORD, WHILE);
    append(' ');
    append_colored(COLOR_SYMBOL, LPAREN);
-   cond->print();
+   cond->do_print();
    append_colored(COLOR_SYMBOL, RPAREN);
    append(' ');
    brace_print(block, false);
@@ -721,7 +776,7 @@ void DoWhile::print() {
    append_colored(COLOR_KEYWORD, WHILE);
    append(' ');
    append_colored(COLOR_SYMBOL, LPAREN);
-   cond->print();
+   cond->do_print();
    append_colored(COLOR_SYMBOL, RPAREN);
 }
 
@@ -732,7 +787,7 @@ void Case::print() {
    else {
       append_colored(COLOR_KEYWORD, CASE);
       append(' ');
-      line += label;
+      append(label);
    }
    append_colored(COLOR_SYMBOL, COLON);
    flush();
@@ -745,14 +800,14 @@ void Switch::print() {
    append_colored(COLOR_KEYWORD, SWITCH);
    append(' ');
    append_colored(COLOR_SYMBOL, LPAREN);
-   cond->print();
+   cond->do_print();
    append_colored(COLOR_SYMBOL, RPAREN);
    append(' ');
    append_colored(COLOR_SYMBOL, LBRACE);
    flush();
    indent += 3;
    for (vector<Case*>::iterator i = cases.begin(); i != cases.end(); i++) {
-      (*i)->print();
+      (*i)->do_print();
    }
    indent -= 3;
    append_colored(COLOR_SYMBOL, "}");
@@ -769,7 +824,7 @@ void Return::print() {
    append_colored(COLOR_KEYWORD, RETURN);
    if (expr) {
       append(' ');
-      expr->print();
+      expr->do_print();
    }
 }
 
@@ -785,29 +840,29 @@ AssignExpr::~AssignExpr() {
 }
 
 void AssignExpr::print() {
-   lval->print();
+   lval->do_print();
    append(' ');
    append_colored(COLOR_SYMBOL, "=");
    append(' ');
-   rval->print();
+   rval->do_print();
 }
 
 void AssignExpr::rename(const string &oldname, const string &newname) {
-   dmsg("AssignExpr::rename from %s to %s\n", oldname.c_str(), newname.c_str());
+//   dmsg("AssignExpr::rename from %s to %s\n", oldname.c_str(), newname.c_str());
    lval->rename(oldname, newname);
    rval->rename(oldname, newname);
 }
 
 void Ternary::print() {
-   expr->print();
+   expr->do_print();
    append(' ');
    append_colored(COLOR_SYMBOL, "?");
    append(' ');
-   _true->print();
+   _true->do_print();
    append(' ');
    append_colored(COLOR_SYMBOL, COLON);
    append(' ');
-   _false->print();
+   _false->do_print();
 }
 
 void Ternary::rename(const string &oldname, const string &newname) {
@@ -817,16 +872,23 @@ void Ternary::rename(const string &oldname, const string &newname) {
 }
 
 void Function::print() {
-   prototype.print();
+   prototype.do_print();
    flush();
    brace_print(block);
 }
 
 void Function::print(vector<string> *cfunc) {
+   line_index = 0;
    AstItem::cfunc = cfunc;
    line.clear();
    indent = 0;
-   print();
+
+   do_print();
+
+   line_index = 0;
+   AstItem::cfunc = NULL;
+   line.clear();
+   indent = 0;
 }
 
 void Function::rename(const string &oldname, const string &newname) {
@@ -1021,24 +1083,44 @@ static Statement *statement_handler(const Element *el) {
 }
 
 static VarDecl *vardecl_handler(const Element *el) {
+   bool in_dim = false;
    const List &children = el->getChildren();
    VarDecl *result = new VarDecl();
    List::const_iterator it;
    List::const_iterator end = children.end();
-   for (it = children.begin(); result->type == NULL && it < end; it++) {
+   for (it = children.begin(); result->init == NULL && it < end; it++) {
       const Element *child = get_child(it);
       switch (tag_map[child->getName()]) {
          case ast_tag_type:
             result->type = type_handler(child);
             break;
+         case ast_tag_op:
+            if (child->getContent() == "*" && result->type) {
+               result->type->ptr++;
+            }
+            else if (child->getContent() == "=") {
+               result->init = expr_handler(++it, end);
+            }
+            break;
+         case ast_tag_variable:
+            result->var = new NameExpr(child->getContent());
+            break;
+         case ast_tag_syntax: {
+            const string &content = child->getContent();
+            if (content == "[") {
+               in_dim = true;
+            }
+            else if (content == "]") {
+               in_dim = false;
+            }
+            else if (in_dim && is_const_color(child) && result->type) {
+               result->type->dims.push_back(strtoul(child->getContent().c_str(), NULL, 0));
+            }
+            break;
+         }
          default:
             break;
       }
-   }
-   if (result->type) {
-      result->var = expr_handler(it, end);
-      // find the name of the resulting variable, an transform any stack variable
-      // names to IDA compatible names  xxStackNN -> var_NN
    }
    return result;
 }
@@ -1054,10 +1136,18 @@ static void funcproto_handler(const Element *el, Function *f) {
          continue;
       }
       switch (tag_map[child->getName()]) {
-         case ast_tag_return_type:
+         case ast_tag_return_type: {
             f->prototype.return_type = type_handler(find_child(child, "type"));
+            const List &rchildren = child->getChildren();
+            for (List::const_iterator cit = rchildren.begin(); cit != rchildren.end(); cit++) {
+               const Element *e = *cit;
+               if (e->getName() == "op" && e->getContent() == "*") {
+                  f->prototype.return_type->ptr++;
+               }
+            }
             have_proto = true;
             break;
+         }
          case ast_tag_syntax:
             break;
          case ast_tag_vardecl: {
@@ -1089,7 +1179,7 @@ static CastExpr *cast_handler(List::const_iterator &it, List::const_iterator &en
       child = get_child(it);
       if (child->getName() == "op") {
          if (child->getContent() == "*") {
-            result->deref++;
+            result->type->ptr++;
          }
          else {
             dmsg("cast_handler unknown op: %s\n", child->getContent().c_str());
@@ -1959,7 +2049,16 @@ void init_maps(void) {
       reserved.insert("double");
       reserved.insert("void");
       reserved.insert("NULL");
-      
+
+      reserved.insert("uint8_t");
+      reserved.insert("uint16_t");
+      reserved.insert("uint32_t");
+      reserved.insert("uint64_t");
+      reserved.insert("int8_t");
+      reserved.insert("int16_t");
+      reserved.insert("int32_t");
+      reserved.insert("int64_t");
+
       type_map["uint1"] = "uint8_t";
       type_map["uint2"] = "uint16_t";
       type_map["uint4"] = "uint32_t";
@@ -2027,3 +2126,60 @@ Function *func_from_xml(Element *func, uint64_t addr) {
    }
    return result;
 }
+
+VarDecl *find_decl(Function *ast, const string &sword) {
+   vector<Statement*> &bk = ast->block.block;
+   vector<VarDecl*> &parms = ast->prototype.parameters;
+
+   //Scan function parameters
+   for (vector<VarDecl*>::iterator i = parms.begin(); i != parms.end(); i++) {
+      VarDecl *decl = *i;
+      if (decl->var->name == sword) {
+         return decl;
+      }
+   }
+
+   //Scan locals
+   for (vector<Statement*>::iterator i = bk.begin(); i != bk.end(); i++) {
+      VarDecl *decl = dynamic_cast<VarDecl*>(*i);
+      if (decl) {
+         if (decl->var->name == sword) {
+            return decl;
+         }
+      }
+      else {
+         break;
+      }
+   }
+
+   return NULL;
+}
+
+VarDecl *find_decl(Function *ast, int col, int line) {
+   vector<Statement*> &bk = ast->block.block;
+   vector<VarDecl*> &parms = ast->prototype.parameters;
+
+   //Scan function parameters
+   for (vector<VarDecl*>::iterator i = parms.begin(); i != parms.end(); i++) {
+      VarDecl *decl = *i;
+      if (decl->col_start <= col && decl->col_end > col && decl->line_begin == line && decl->line_end == line) {
+         return decl;
+      }
+   }
+
+   //Scan locals
+   for (vector<Statement*>::iterator i = bk.begin(); i != bk.end(); i++) {
+      VarDecl *decl = dynamic_cast<VarDecl*>(*i);
+      if (decl) {
+         if (decl->col_start <= col && decl->col_end > col && decl->line_begin == line && decl->line_end == line) {
+            return decl;
+         }
+      }
+      else {
+         break;
+      }
+   }
+
+   return NULL;
+}
+

@@ -47,6 +47,7 @@
 #include <segregs.hpp>
 #include <xref.hpp>
 #include <help.h>
+#include <moves.hpp>
 
 #include <stdlib.h>
 #include <iostream>
@@ -81,10 +82,14 @@ struct LocalVar {
 struct Decompiled {
    Function *ast;
    func_t *ida_func;
+   strvec_t *sv;       //text of the decmpiled function displayed in a custom_viewer
    map<string, LocalVar*> locals;
 
-   Decompiled(Function *f, func_t *func) : ast(f), ida_func(func) {};
+   Decompiled(Function *f, func_t *func) : ast(f), ida_func(func), sv(NULL) {};
    ~Decompiled();
+   
+   void set_ud(strvec_t *ud) {sv = ud;};
+   strvec_t *get_ud() {return sv;};
 };
 
 Decompiled::~Decompiled() {
@@ -92,6 +97,7 @@ Decompiled::~Decompiled() {
    for (map<string, LocalVar*>::iterator i = locals.begin(); i != locals.end(); i++) {
       delete i->second;
    }
+   delete sv;
 }
 
 void decompile_at(ea_t ea, TWidget *w = NULL);
@@ -131,19 +137,18 @@ static string get_available_title() {
 
 //---------------------------------------------------------------------------
 // get the word under the (keyboard or mouse) cursor
-static bool get_current_word(TWidget *v, bool mouse, qstring &word) {
+static bool get_current_word(TWidget *v, bool mouse, qstring &word, qstring *line) {
    // query the cursor position
    int x, y;
    if (get_custom_viewer_place(v, mouse, &x, &y) == NULL) {
       return false;
    }
    // query the line at the cursor
-   qstring buf;
-   tag_remove(&buf, get_custom_viewer_curline(v, mouse));
-   if (x >= buf.length()) {
+   tag_remove(line, get_custom_viewer_curline(v, mouse));
+   if (x >= line->length()) {
       return false;
    }
-   char *ptr = buf.begin() + x;
+   char *ptr = line->begin() + x;
    char *end = ptr;
    // find the end of the word
    while ((qisalnum(*end) || *end == '_') && *end != '\0') {
@@ -155,7 +160,7 @@ static bool get_current_word(TWidget *v, bool mouse, qstring &word) {
    }
 
    // find the beginning of the word
-   while (ptr > buf.begin() && (qisalnum(ptr[-1]) || ptr[-1] == '_')) {
+   while (ptr > line->begin() && (qisalnum(ptr[-1]) || ptr[-1] == '_')) {
       ptr--;
    }
    word = qstring(ptr, end - ptr);
@@ -164,7 +169,8 @@ static bool get_current_word(TWidget *v, bool mouse, qstring &word) {
 
 static bool navigate_to_word(TWidget *w, bool cursor) {
    qstring word;
-   if (get_current_word(w, cursor, word)) {
+   qstring line;
+   if (get_current_word(w, cursor, word, &line)) {
       ea_t ea = get_name_ea(BADADDR, word.c_str());
       if (ea != BADADDR) {
          if (is_function_start(ea) && !is_extern_addr(ea)) {
@@ -201,11 +207,12 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
          case 'N': { //rename the thing under the cursor
             Decompiled *dec = function_map[w];
             qstring word;
+            qstring line;
             bool refresh = false;
-            if (get_current_word(w, false, word)) {
+            if (get_current_word(w, false, word, &line)) {
                string sword(word.c_str());
 //               msg("Try to rename: %s\n", word.c_str());
-               if (!is_reserved(sword)) {
+               if (!is_reserved(sword)) { //can't rename to a reserved word
                   qstring new_name(word);
                   map<string,LocalVar*>::iterator mi = dec->locals.find(sword);
                   if (mi != dec->locals.end()) {
@@ -246,6 +253,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                      }
                   }
                   else if (do_ida_rename(new_name, dec->ida_func->start_ea) == 2) {
+                     //renming a global
                      string snew_name(new_name.c_str());
                      dec->ast->rename(sword, snew_name);
 //                     msg("rename: %s -> %s\n", word.c_str(), new_name.c_str());
@@ -253,9 +261,6 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                   }
                   else {
                   }
-               }
-               else {
-                  //if the user entered a type name we need to do something different
                }
             }
             if (refresh) {
@@ -274,13 +279,65 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
             return true;
          }
          case 'Y': { //Set type for the thing under the cursor
+            Decompiled *dec = function_map[w];  //the ast for the function we are editing
             qstring word;
-            int x, y;
-            if (get_custom_viewer_place(w, false, &x, &y) == NULL) {
-               return false;
-            }
-            if (get_current_word(w, false, word)) {
-//               msg("(%d)type: %s\n", y, word.c_str());
+            qstring line;
+            if (get_current_word(w, false, word, &line)) {
+               //need to determine the thing being typed along with it's old type
+               //user may have selected the type name at a variable's declaration,
+               //or the user may have selected the variable name at its declaration
+               //or some place it is used, so we need to find the variable's declaration
+               //node in the ast (unless it's a global) so that we can change the Type
+               //node within the declaration node.
+
+               int x = -1;
+               int y = -1;
+               lochist_entry_t loc;
+               if (get_custom_viewer_location(&loc, w)) {
+                  y = loc.plce->touval(dec->sv);
+                  x = loc.rinfo.pos.cx;
+               }
+               else {
+                  msg("set type: unable to retrieve cursor position\n");
+               }
+
+               //indent doesn't get factored into ast x/y data
+               for (const char *cptr = line.c_str(); *cptr == ' '; cptr++) {
+                  x--;
+               }
+
+               string sword(word.c_str());
+               map<string,LocalVar*>::iterator mi = dec->locals.find(sword);
+               VarDecl *decl = NULL;
+               if (mi != dec->locals.end()) {
+//                  msg("Find decl by name (%s)\n", sword.c_str());
+                  decl = find_decl(dec->ast, sword);
+               }
+               else {
+//                  msg("Find decl by x,y (%d,%d)\n", x, y);
+                  decl = find_decl(dec->ast, x, y);
+               }
+               if (decl == NULL) {
+                  //last chance - see if word refers to a global, then ask IDA its type
+               }
+               else {
+//                  msg("You seem to be referring to this decl: %s on line %d col %d\n", decl->var->name.c_str(), decl->line_begin, decl->col_start);
+               }
+#if 0
+//not ready yet
+               //need to get string representation of the decl (if type is known) to display to user
+               if (ask_str(&word, HIST_IDENT, "Please enter the type declaration")) {
+                  //now we need to parse what the user entered to extract only type related info
+                  //then determine whether the user entered a type known to ida, and if so
+                  //update the ast to change the variable's type. If the variable is a stack variable,
+                  //global variable, or function parameter, also change the type in IDA.
+                  //If the type is for a register variable, then update the variable's type in a
+                  //netnode (like the variable name map)
+                  
+                  //use parse_decl to parse user text into a type
+                  //then will need to extract IDA's tinfo_t information back to an updated ast Type node
+               }
+#endif
             }
             return true;
          }
@@ -422,10 +479,10 @@ void init_ida_ghidra() {
    proc_map[PLFM_DALVIK] = "Dalvik";
    proc_map[PLFM_JAVA] = "JVM";
    proc_map[PLFM_MIPS] = "MIPS";
-   proc_map[PLFM_HPPA] = "PA-RISC";
+   proc_map[PLFM_HPPA] = "pa-risc";
    proc_map[PLFM_PIC] = "PIC";
    proc_map[PLFM_PPC] = "PowerPC";
-   proc_map[PLFM_SPARC] = "Sparc";
+   proc_map[PLFM_SPARC] = "sparc";
    proc_map[PLFM_MSP430] = "TI_MSP430";
    proc_map[PLFM_TRICORE] = "tricore";
    proc_map[PLFM_386] = "x86";
@@ -553,8 +610,10 @@ bool get_sleigh_id(string &sleigh) {
          sleigh += ":16:default";
          break;
       case PLFM_DALVIK:
+         sleigh += ":32:default";
          break;
       case PLFM_JAVA:
+         sleigh += ":32:default";
          break;
       case PLFM_MIPS: {
          //options include "R6" "micro" "64-32addr" "micro64-32addr" "64-32R6addr" "default"
@@ -568,16 +627,21 @@ bool get_sleigh_id(string &sleigh) {
          break;
       }
       case PLFM_HPPA:
+         sleigh += ":32:default";
          break;
       case PLFM_PIC:
          break;
       case PLFM_PPC:
          break;
       case PLFM_SPARC:
+         sleigh += is_64 ? ":64" : ":32";
+         sleigh += ":default";
          break;
       case PLFM_MSP430:
+         sleigh += ":16:default";
          break;
       case PLFM_TRICORE:
+         sleigh += ":32:default";
          break;
       case PLFM_386:
          //options include "System Management Mode" "Real Mode" "Protected Mode" "default"
@@ -713,11 +777,16 @@ void decompile_at(ea_t addr, TWidget *w) {
          Decompiled *dec = new Decompiled(ast, func);
 
          //now try to map ghidra stack variable names to ida stack variable names
+//         msg("mapping ida names to ghidra names\n");
          map_ghidra_to_ida(dec);
 
          vector<string> code;
+//         msg("Generating C code\n");
          dec->ast->print(&code);
+
+//         msg("Displaying C code\n");
          strvec_t *sv = new strvec_t();
+         dec->set_ud(sv);
          for (vector<string>::iterator si = code.begin(); si != code.end(); si++) {
             sv->push_back(simpleline_t(si->c_str()));
          }
@@ -743,12 +812,11 @@ void decompile_at(ea_t addr, TWidget *w) {
             titles.insert(title);
          }
          else {
-            sv = (strvec_t*)callui(ui_custom_viewer_set_userdata, w, sv).vptr;
+            callui(ui_custom_viewer_set_userdata, w, sv).vptr;
             refresh_custom_viewer(w);
             repaint_custom_viewer(w);
             delete function_map[w];
             function_map[w] = dec;
-            delete sv;
          }
       }
 //      msg("do_decompile returned: %d\n%s\n%s\n", res, code.c_str(), cfunc.c_str());
