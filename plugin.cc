@@ -292,13 +292,16 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
 
                int x = -1;
                int y = -1;
-               lochist_entry_t loc;
-               if (get_custom_viewer_location(&loc, w)) {
-                  y = loc.plce->touval(dec->sv);
-                  x = loc.rinfo.pos.cx;
+
+               place_t *pl = get_custom_viewer_place(w, false, &x, &y);
+               tcc_place_type_t pt = get_viewer_place_type(w);
+               if (pl && pt == TCCPT_SIMPLELINE_PLACE) {
+                  simpleline_place_t *slp = (simpleline_place_t*)pl;
+                  y = slp->n;
                }
                else {
-                  msg("set type: unable to retrieve cursor position\n");
+                  msg("Couldn't retrieve line number\n");
+                  return false;
                }
 
                //indent doesn't get factored into ast x/y data
