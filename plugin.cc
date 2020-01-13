@@ -82,13 +82,13 @@ struct LocalVar {
 struct Decompiled {
    Function *ast;
    func_t *ida_func;
-   strvec_t *sv;       //text of the decmpiled function displayed in a custom_viewer
+   strvec_t *sv;       //text of the decompiled function displayed in a custom_viewer
    map<string, LocalVar*> locals;
 
    Decompiled(Function *f, func_t *func) : ast(f), ida_func(func), sv(NULL) {};
    ~Decompiled();
    
-   void set_ud(strvec_t *ud) {sv = ud;};
+   void set_ud(strvec_t *ud);
    strvec_t *get_ud() {return sv;};
 };
 
@@ -98,6 +98,11 @@ Decompiled::~Decompiled() {
       delete i->second;
    }
    delete sv;
+}
+
+void Decompiled::set_ud(strvec_t *ud) {
+   delete sv;
+   sv = ud;
 }
 
 void decompile_at(ea_t ea, TWidget *w = NULL);
@@ -162,6 +167,10 @@ static bool get_current_word(TWidget *v, bool mouse, qstring &word, qstring *lin
    // find the beginning of the word
    while (ptr > line->begin() && (qisalnum(ptr[-1]) || ptr[-1] == '_')) {
       ptr--;
+   }
+   if (!qisalpha(*ptr) && *ptr != '_') {
+      //starts with a digit
+      return false;
    }
    word = qstring(ptr, end - ptr);
    return true;
@@ -271,10 +280,10 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                   sv->push_back(simpleline_t(si->c_str()));
                }
 
-               sv = (strvec_t*)callui(ui_custom_viewer_set_userdata, w, sv).vptr;
+               callui(ui_custom_viewer_set_userdata, w, sv);
                refresh_custom_viewer(w);
                repaint_custom_viewer(w);
-               delete sv;
+               dec->set_ud(sv);
             }
             return true;
          }
@@ -815,23 +824,22 @@ void decompile_at(ea_t addr, TWidget *w) {
          simpleline_place_t s2((int)(sv->size() - 1));
 
          if (w == NULL) {
-            TWidget *cv = create_custom_viewer(fmt.c_str(), &s1, &s2,
-                                               &s1, NULL, sv, &handlers, sv);
-            function_map[cv] = dec;
-            TWidget *code_view = create_code_viewer(cv);
+            w = create_custom_viewer(fmt.c_str(), &s1, &s2,
+                                     &s1, NULL, sv, &handlers, sv);
+            TWidget *code_view = create_code_viewer(w);
             set_code_viewer_is_source(code_view);
             display_widget(code_view, WOPN_DP_TAB);
-            histories[cv].push_back(addr);
-            views[cv] = title;
+            histories[w].push_back(addr);
+            views[w] = title;
             titles.insert(title);
          }
          else {
-            callui(ui_custom_viewer_set_userdata, w, sv).vptr;
+            callui(ui_custom_viewer_set_userdata, w, sv);
             refresh_custom_viewer(w);
             repaint_custom_viewer(w);
             delete function_map[w];
-            function_map[w] = dec;
          }
+         function_map[w] = dec;
       }
 //      msg("do_decompile returned: %d\n%s\n%s\n", res, code.c_str(), cfunc.c_str());
    }
