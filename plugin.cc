@@ -649,7 +649,7 @@ bool get_sleigh_id(string &sleigh) {
          qstring abi;
          if (get_abi_name(&abi) > 0 && abi.find("xbox") == 0) {
             // ABI name is set to "xbox" for X360 PPC executables
-            sleigh += ":64:VLE-32addr";
+            sleigh += ":64:A2ALT-32addr";
          }
          else {
             sleigh += is_64 ? ":64:default" : ":32:default";
