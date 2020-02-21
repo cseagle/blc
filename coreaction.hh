@@ -180,6 +180,8 @@ public:
 /// \brief Check for constants, with pointer type, that correspond to global symbols
 class ActionConstantPtr : public Action {
   int4 localcount;		///< Number of passes made for this function
+  static AddrSpace *searchForLoadStore(Varnode *vn,PcodeOp *op);
+  static AddrSpace *selectInferSpace(Varnode *vn,PcodeOp *op,const vector<AddrSpace *> &spaceList);
   static SymbolEntry *isPointer(AddrSpace *spc,Varnode *vn,PcodeOp *op,int4 slot,
 				Address &rampoint,uintb &fullEncoding,Funcdata &data);
 public:
@@ -378,6 +380,17 @@ public:
   virtual int4 apply(Funcdata &data) { data.getMerge().mergeOpcode(CPUI_COPY); return 0; }
 };
 
+/// \brief Try to merge Varnodes specified by Symbols with multiple SymbolEntrys
+class ActionMergeMultiEntry : public Action {
+public:
+  ActionMergeMultiEntry(const string &g) : Action(rule_onceperfunc,"mergemultientry",g) {}	///< Constructor
+  virtual Action *clone(const ActionGroupList &grouplist) const {
+    if (!grouplist.contains(getGroup())) return (Action *)0;
+    return new ActionMergeMultiEntry(getGroup());
+  }
+  virtual int4 apply(Funcdata &data) { data.getMerge().mergeMultiEntry(); return 0; }
+};
+
 /// \brief Try to merge Varnodes of the same type (if they don't hold different values at the same time)
 class ActionMergeType : public Action {
 public:
@@ -450,8 +463,9 @@ class ActionNameVars : public Action {
   };
   static void makeRec(ProtoParameter *param,Varnode *vn,map<HighVariable *,OpRecommend> &recmap);
   static void lookForBadJumpTables(Funcdata &data);	///< Mark the switch variable for bad jump-tables
-  static void lookForRecommendedNames(Funcdata &data);	///< Try to apply names from unlocked symbols
   static void lookForFuncParamNames(Funcdata &data,const vector<Varnode *> &varlist);
+  static void linkSpacebaseSymbol(Varnode *vn,Funcdata &data,vector<Varnode *> &namerec);
+  static void linkSymbols(Funcdata &data,vector<Varnode *> &namerec);
 public:
   ActionNameVars(const string &g) : Action(rule_onceperfunc,"namevars",g) {}	///< Constructor
   virtual Action *clone(const ActionGroupList &grouplist) const {

@@ -66,7 +66,7 @@ class Varnode {
 public:
   /// There are a large number of boolean attributes that can be placed on a Varnode.
   /// Some are calculated and maintained by the friend classes Funcdata and VarnodeBank, 
-  /// and others can be set and cleared publically by separate subsystems.
+  /// and others can be set and cleared publicly by separate subsystems.
   enum varnode_flags {
     mark = 0x01,	///< Prevents infinite loops
     constant = 0x02,	///< The varnode is constant
@@ -154,6 +154,9 @@ private:
   // These functions should be only private things used by VarnodeBank
   void setInput(void) { setFlags(Varnode::input|Varnode::coverdirty); }	///< Mark Varnode as \e input
   void setDef(PcodeOp *op);	///< Set the defining PcodeOp of this Varnode
+  bool setSymbolProperties(SymbolEntry *entry);	///< Set properties from the given Symbol to \b this Varnode
+  void setSymbolEntry(SymbolEntry *entry);	///< Attach a Symbol to \b this Varnode
+  void setSymbolReference(SymbolEntry *entry,int4 off);	///< Attach a Symbol reference to \b this
   void addDescend(PcodeOp *op);	///< Add a descendant (reading) PcodeOp to this Varnode's list
   void eraseDescend(PcodeOp *op); ///< Erase a descendant (reading) PcodeOp from this Varnode's list
   void destroyDescend(void);	///< Clear all descendant (reading) PcodeOps

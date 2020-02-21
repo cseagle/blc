@@ -234,13 +234,37 @@ void idaapi blc_term(void) {
    err_stream = NULL;
 }
 
+void do_pcode(const Funcdata *fd) {
+   //typedef map<SeqNum,PcodeOp *> PcodeOpTree
+   /// \brief Start of all (alive) PcodeOp objects sorted by sequence number
+  
+   PcodeOpTree::const_iterator iter;
+   int i = 0;
+   for (iter = fd->beginOpAll(); iter != fd->endOpAll(); iter++) {
+      i++;
+      const SeqNum &sn = iter->first;
+      const PcodeOp *pcode = iter->second;
+      ostringstream os;
+      pcode->printRaw(os);      
+      msg("%p: %u, (%s / %s): %s\n", (void*)sn.getAddr().getOffset(), sn.getOrder(), pcode->getOpcode()->getName().c_str(), get_opname(pcode->code()), os.str().c_str());
+   }
+   msg("Found %d PcodeOpTree\n", i);
+/*
+   /// \brief Start of all (alive) PcodeOp objects attached to a specific Address
+   PcodeOpTree::const_iterator beginOp(const Address &addr) const { return obank.begin(addr); }
+
+   /// \brief End of all (alive) PcodeOp objects attached to a specific Address
+   PcodeOpTree::const_iterator endOp(const Address &addr) const { return obank.end(addr); }
+*/
+}
+
 // Extract the info that the decompiler needs to instantiate its address space manager
 // This also builds the internal register map while it walks the sleigh spec.
 
 // see IfcDecompile::execute
 int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
    Scope *global = arch->symboltab->getGlobalScope();
-   Address addr(arch->getDefaultSpace(), start_ea);
+   Address addr(arch->getDefaultCodeSpace(), start_ea);
    Funcdata *fd = global->findFunction(addr);
    *result = NULL;
 
@@ -283,6 +307,9 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
          if (res == 0) {
 //            msg(" (no change)");
          }
+         
+         do_pcode(fd);
+         
          stringstream ss;
          arch->print->setIndentIncrement(3);
          arch->print->setOutputStream(&ss);

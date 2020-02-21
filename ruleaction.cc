@@ -1884,9 +1884,9 @@ int4 RuleDoubleShift::applyOp(PcodeOp *op,Funcdata &data)
 }
 
 /// \class RuleDoubleArithShift
-/// \brief Simply two sequential INT_SRIGHT: `(x s>> #c) s>> #d   =>  x s>> saturate(#c + #d)`
+/// \brief Simplify two sequential INT_SRIGHT: `(x s>> #c) s>> #d   =>  x s>> saturate(#c + #d)`
 ///
-/// Optimized division optimization in particular can produce a sequence of signed right shifts.
+/// Division optimization in particular can produce a sequence of signed right shifts.
 /// The shift amounts add up to the point where the sign bit has saturated the entire result.
 void RuleDoubleArithShift::getOpList(vector<uint4> &oplist) const
 
@@ -7348,7 +7348,7 @@ RulePtrFlow::RulePtrFlow(const string &g,Architecture *conf)
   : Rule( g, 0, "ptrflow")
 {
   glb = conf;
-  hasTruncations = glb->getDefaultSpace()->isTruncated();
+  hasTruncations = glb->getDefaultDataSpace()->isTruncated();
 }
 
 void RulePtrFlow::getOpList(vector<uint4> &oplist) const
@@ -7486,7 +7486,7 @@ int4 RulePtrFlow::applyOp(PcodeOp *op,Funcdata &data)
   case CPUI_CALLIND:
   case CPUI_BRANCHIND:
     vn = op->getIn(0);
-    spc = data.getArch()->getDefaultSpace();
+    spc = data.getArch()->getDefaultCodeSpace();
     if (vn->getSize() > spc->getAddrSize()) {
       vn = truncatePointer(spc,op,vn,0,data);
       madeChange = 1;
