@@ -4,6 +4,7 @@
 # build residue
 /.vs/*
 /x86/*
+/x64/*
 /obj32/*
 /obj64/*
 /bin/*
