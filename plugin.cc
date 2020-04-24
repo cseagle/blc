@@ -1151,7 +1151,7 @@ bool get_string_ea(ea_t addr, qstring *str) {
  
 		//somehow need to get the target of the reference here....
 
-		msg("is Offset\n");
+		//msg("is Offset\n");
 
 		refinfo_t ri;
 
