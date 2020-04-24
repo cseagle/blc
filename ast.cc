@@ -354,7 +354,7 @@ void Type::print(const string& var) {
 	bool need_space = true;
 	print_in();
 	if (is_const) {
-		append_colored(COLOR_NUMBER, "const "); // constant
+		append_colored(COLOR_DNUM, "const "); // constant
 	}
 	append_colored(COLOR_SYMBOL, name);
 	if (ptr) {
@@ -413,8 +413,23 @@ void NameExpr::print() {
 	else if (is_library_func(name)) {
 		append_colored(COLOR_MACRO, name);
 	}
+	//for binaries with string names segments like macho
+	else if (is_string(name)) {
+			append_colored(COLOR_MACRO, name);
+			//Todo: get string an display
+	}
 	else {
-		append_colored(COLOR_LIBNAME, name);
+		
+		//new StringLiteral
+		string str = get_string(name);
+		
+		if (str != "") {
+			append_colored(COLOR_MACRO, str.c_str());
+		}
+		else {
+			append_colored(COLOR_LIBNAME, name);
+		}
+		
 	}
 }
 
