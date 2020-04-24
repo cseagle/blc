@@ -1145,8 +1145,6 @@ bool get_string_ea(ea_t addr, qstring *str) {
 
 	flags_t f = get_full_flags(addr);
 
-	//https://www.hex-rays.com/products/ida/support/sdkdoc/offset_8hpp.html
-
 	if (is_off(f, OPND_ALL)) {
  
 		//somehow need to get the target of the reference here....
@@ -1160,9 +1158,9 @@ bool get_string_ea(ea_t addr, qstring *str) {
 		if (ri.target != BADADDR) {
 
 			msg("TODO: has target %x\n", ri.target);
+
 			//TODO: get string
-			
-			return true;
+
 		}
 		else if (is_code(f)) {
 
@@ -1175,7 +1173,9 @@ bool get_string_ea(ea_t addr, qstring *str) {
 			ea_t value = out.ops->addr;
 			
 			ea_t target = value - ri.tdelta + ri.base;
-			return true;
+
+			get_str_lit(target, str);
+
 		} 
 		else if (is_data(f)) {
 
@@ -1185,12 +1185,14 @@ bool get_string_ea(ea_t addr, qstring *str) {
 
 			get_str_lit(v, str);
 
-			if (*str != "") {
-				return true;
-			}
+			
 		}
 
 			
+	}
+
+	if (*str != "") {
+		return true;
 	}
 
 	return false;
