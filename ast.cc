@@ -420,11 +420,17 @@ void NameExpr::print() {
 	}
 	else {
 		
-		//new StringLiteral
+		//TODO: maybe use StringLiteral here?
 		string str = get_string(name);
 		
 		if (str != "") {
-			append_colored(COLOR_MACRO, str.c_str());
+
+			append_colored(COLOR_DSTR, "\"");
+			string escaped;
+			escape_string(str, escaped);
+			append_colored(COLOR_DSTR, escaped);
+			append_colored(COLOR_DSTR, "\"");
+
 		}
 		else {
 			append_colored(COLOR_LIBNAME, name);

@@ -1097,6 +1097,7 @@ bool get_value(uint64_t addr, uint64_t* val) {
 	return true;
 }
 
+// TODO: optimize with new functions
 bool get_string(uint64_t addr, string& str) {
 	qstring res;
 	flags_t f = get_full_flags(addr);
@@ -1118,8 +1119,10 @@ bool get_string(uint64_t addr, string& str) {
 	return false;
 }
 
-bool get_string_ea(ea_t addr, qstring *str) {
+bool get_str_lit(ea_t addr, qstring* str) {
+
 	qstring res;
+
 	flags_t f = get_full_flags(addr);
 
 	if (is_strlit(f)) {
@@ -1127,6 +1130,20 @@ bool get_string_ea(ea_t addr, qstring *str) {
 		*str = res.c_str();
 		return true;
 	}
+}
+
+
+bool get_string_ea(ea_t addr, qstring *str) {
+
+	qstring res;
+
+	get_str_lit(addr, str);
+
+	if (*str != "") {
+		return true;
+	}
+
+	flags_t f = get_full_flags(addr);
 
 	//https://www.hex-rays.com/products/ida/support/sdkdoc/offset_8hpp.html
 
@@ -1134,7 +1151,46 @@ bool get_string_ea(ea_t addr, qstring *str) {
  
 		//somehow need to get the target of the reference here....
 
-		return true;
+		msg("is Offset\n");
+
+		refinfo_t ri;
+
+		get_refinfo(&ri, addr, OPND_ALL);
+
+		if (ri.target != BADADDR) {
+
+			msg("TODO: has target %x\n", ri.target);
+			//TODO: get string
+			
+			return true;
+		}
+		else if (is_code(f)) {
+
+			// shamelessly borrowed from the NSA:
+			// https://github.com/NationalSecurityAgency/ghidra/blob/21f4802c2a9930ef3447f70d37f391b91c3cda5b/GhidraBuild/IDAPro/Python/6xx/plugins/xmlexp.py
+
+			insn_t out;
+			decode_insn(&out, addr);
+
+			ea_t value = out.ops->addr;
+			
+			ea_t target = value - ri.tdelta + ri.base;
+			return true;
+		} 
+		else if (is_data(f)) {
+
+			uval_t v;
+
+			get_data_value(&v, addr, 0) - ri.tdelta + ri.base;
+
+			get_str_lit(v, str);
+
+			if (*str != "") {
+				return true;
+			}
+		}
+
+			
 	}
 
 	return false;
