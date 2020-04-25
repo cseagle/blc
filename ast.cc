@@ -408,7 +408,7 @@ NameExpr::NameExpr(const string& var, bool _global) : name(var), global(_global)
 void NameExpr::print() {
 	dmsg("NameExpr::print %s\n", name.c_str());
 	if (is_extern(name)) {
-		append_colored(COLOR_IMPNAME, name); //TODO: seems not to work properly for iOS
+		append_colored(COLOR_IMPNAME, name); 
 	}
 	else if (is_library_func(name)) {
 		append_colored(COLOR_MACRO, name);

@@ -1126,10 +1126,15 @@ bool get_str_lit(ea_t addr, qstring* str) {
 	flags_t f = get_full_flags(addr);
 
 	if (is_strlit(f)) {
+
 		get_strlit_contents(&res, addr, -1, STRTYPE_C);
+		
 		*str = res.c_str();
+		
 		return true;
 	}
+
+	return false;
 }
 
 
@@ -1147,8 +1152,6 @@ bool get_string_ea(ea_t addr, qstring *str) {
 
 	if (is_off(f, OPND_ALL)) {
  
-		//somehow need to get the target of the reference here....
-
 		//msg("is Offset\n");
 
 		refinfo_t ri;
@@ -1157,9 +1160,8 @@ bool get_string_ea(ea_t addr, qstring *str) {
 
 		if (ri.target != BADADDR) {
 
-			msg("TODO: has target %x\n", ri.target);
-
-			//TODO: get string
+			//untested
+			get_str_lit(ri.target, str);
 
 		}
 		else if (is_code(f)) {
@@ -1181,13 +1183,11 @@ bool get_string_ea(ea_t addr, qstring *str) {
 
 			uval_t v;
 
-			get_data_value(&v, addr, 0) - ri.tdelta + ri.base;
+			get_data_value(&v, addr, 0);
 
 			get_str_lit(v, str);
-
-			
+	
 		}
-
 			
 	}
 
