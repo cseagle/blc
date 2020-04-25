@@ -106,6 +106,10 @@ bool get_value(uint64_t addr, uint64_t *val);
 
 bool get_string(uint64_t addr, string &str);
 
+bool get_str_lit(uint64_t addr, string* str);
+
+bool get_string_ea(uint64_t addr, string* str);
+
 string get_string(const string& name);
 
 bool is_string(const string& name);

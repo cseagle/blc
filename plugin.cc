@@ -1119,7 +1119,7 @@ bool get_string(uint64_t addr, string& str) {
 	return false;
 }
 
-bool get_str_lit(ea_t addr, qstring* str) {
+bool get_str_lit(uint64_t addr, string* str) {
 
 	qstring res;
 
@@ -1138,7 +1138,7 @@ bool get_str_lit(ea_t addr, qstring* str) {
 }
 
 
-bool get_string_ea(ea_t addr, qstring *str) {
+bool get_string_ea(uint64_t addr, string *str) {
 
 	qstring res;
 
@@ -1201,7 +1201,7 @@ bool get_string_ea(ea_t addr, qstring *str) {
 string get_string(const string& name) {
 
 	ea_t ea = get_name_ea(BADADDR, name.c_str());
-	qstring str;
+	string str;
 
 	bool res = get_string_ea(ea, &str);
 
