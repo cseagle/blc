@@ -1464,6 +1464,7 @@ static Expression* expr_handler(List::const_iterator& it, List::const_iterator& 
 									Expression* ne = make_name(rn->name, rn->global);
 									delete rp;
 									result = ne;
+									dmsg("   ne: %s\n", debug_print(result));
 								}
 							}
 							result = new CallExpr(result, p);
