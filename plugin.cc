@@ -207,8 +207,11 @@ static bool navigate_to_word(TWidget* w, bool cursor) {
 //---------------------------------------------------------------------------
 // Keyboard callback
 static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
+
 	ea_t addr = 0;
-	if (shift == 0) {
+
+	if (shift == 0) { 
+
 		strvec_t* sv = (strvec_t*)ud;
 		switch (key) {
 		case 'G':
@@ -359,12 +362,25 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			}
 			return true;
 		}
-		case IK_DIVIDE: { //Add eol comment on current line
+		// on an short US keyboard you cannot add an comment, IK_OEM_2 is the other "/"
+		case IK_DIVIDE:
+		case IK_OEM_2:
+			{ //Add eol comment on current line
 			int x, y;
+		
 			if (get_custom_viewer_place(w, false, &x, &y) == NULL) {
 				return false;
 			}
-			//            msg("add comment on line %d\n", y);
+								
+			qstring comment;
+				
+			if (ask_str(&comment, HIST_IDENT, "Please enter your comment")) {
+
+				msg("Added comment \"%s\" on line %d\n", comment.c_str(), y);
+
+				//TODO: code to add an comment 
+			}		
+			           
 			return true;
 		}
 		case IK_ESCAPE: {
@@ -391,7 +407,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			return navigate_to_word(w, false);
 		}
 		default:
-			//            msg("Detected key press: 0x%x\n", key);
+			     // msg("Detected key press: 0x%x\n", key);
 			break;
 		}
 	}
