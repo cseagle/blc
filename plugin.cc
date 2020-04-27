@@ -238,7 +238,7 @@ static void refresh_widget(TWidget* w) {
 
 			if (len > 1) {
 
-				msg("length %i \n",len);
+				//msg("length %i \n",len);
 
 				//allocate a buffer of sufficient size
 				char* outstr = new char[len];
