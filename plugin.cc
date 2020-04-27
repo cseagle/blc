@@ -236,7 +236,9 @@ static void refresh_widget(TWidget* w) {
 			// get length of entry
 			int len = cno.supstr(ci, NULL, 0);
 
-			if (len > 0) {
+			if (len > 1) {
+
+				msg("length %i \n",len);
 
 				//allocate a buffer of sufficient size
 				char* outstr = new char[len];
@@ -247,6 +249,7 @@ static void refresh_widget(TWidget* w) {
 				// append it as comment
 				pline.append(" // ");
 				pline.append(outstr);
+
 
 			}
 
@@ -452,7 +455,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 			qstring comment;
 
-			if (len > 0) {
+			if (len > 1) {
 
 				char* obuf = new char[len];		//allocate a buffer of sufficient size
 				cno.supval(y, obuf, len);		//extract data from the supval
@@ -958,7 +961,7 @@ void decompile_at(ea_t addr, TWidget* w) {
 					// get length of entry
 					int len = cno.supstr(ci, NULL, 0);
 
-					if (len > 0) {
+					if (len > 1) {
 
 						//allocate a buffer of sufficient size
 						char* outstr = new char[len];
@@ -969,6 +972,7 @@ void decompile_at(ea_t addr, TWidget* w) {
 						// append it as comment
 						pline.append(" // ");
 						pline.append(outstr);
+
 					}
 
 					sv->push_back(simpleline_t(pline));
