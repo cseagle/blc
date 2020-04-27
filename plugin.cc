@@ -76,6 +76,9 @@ using std::istreambuf_iterator;
 using std::map;
 using std::set;
 
+//prefix for netnode nodes
+#define NETNODEPRE "$ blc_"
+
 struct LocalVar {
 	string ghidra_name;
 	string current_name;  //current display name in disassembly display
@@ -204,6 +207,70 @@ static bool navigate_to_word(TWidget* w, bool cursor) {
 	return false;
 }
 
+static void refresh_widget(TWidget* w) {
+
+	Decompiled* dec = function_map[w];
+
+	qstring nodename = NETNODEPRE;
+
+	string nodeappend = std::to_string((long)dec->ida_func->start_ea);
+
+	nodename.append(nodeappend.c_str());
+
+	netnode cno(nodename.c_str());
+
+	vector<string> code;
+
+	dec->ast->print(&code);
+
+	strvec_t* sv = new strvec_t();
+
+	int ci = 0; // lines start at 0 in IDA
+
+	for (vector<string>::iterator si = code.begin(); si != code.end(); si++) {
+
+		qstring pline = si->c_str();
+
+		if (cno != BADNODE) {
+
+			// get length of entry
+			int len = cno.supstr(ci, NULL, 0);
+
+			if (len > 0) {
+
+				//allocate a buffer of sufficient size
+				char* outstr = new char[len];
+
+				// get the comment at the current line number in iteration from superval
+				cno.supval(ci, outstr, len);
+
+				// append it as comment
+				pline.append(" // ");
+				pline.append(outstr);
+
+			}
+
+			sv->push_back(simpleline_t(pline));
+
+		} else {
+			
+			sv->push_back(simpleline_t(pline));
+		
+		}
+
+		ci++;
+	}
+
+	callui(ui_custom_viewer_set_userdata, w, sv);
+
+	refresh_custom_viewer(w);
+
+	repaint_custom_viewer(w);
+
+	dec->set_ud(sv);
+
+}
+
 //---------------------------------------------------------------------------
 // Keyboard callback
 static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
@@ -282,17 +349,9 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				}
 			}
 			if (refresh) {
-				vector<string> code;
-				dec->ast->print(&code);
-				strvec_t* sv = new strvec_t();
-				for (vector<string>::iterator si = code.begin(); si != code.end(); si++) {
-					sv->push_back(simpleline_t(si->c_str()));
-				}
 
-				callui(ui_custom_viewer_set_userdata, w, sv);
-				refresh_custom_viewer(w);
-				repaint_custom_viewer(w);
-				dec->set_ud(sv);
+				refresh_widget(w);
+			
 			}
 			return true;
 		}
@@ -365,20 +424,62 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 		// on an short US keyboard you cannot add an comment, IK_OEM_2 is the other "/"
 		case IK_DIVIDE:
 		case IK_OEM_2:
-			{ //Add eol comment on current line
+			{ 
+			//Add eol comment on current line
 			int x, y;
 		
 			if (get_custom_viewer_place(w, false, &x, &y) == NULL) {
 				return false;
 			}
-								
+
+			Decompiled* dec = function_map[w];
+
+			// node name is $ blc+ startoffset of function, this avoids issues with renaming
+			qstring nodename = NETNODEPRE;
+
+			// generating netnode name and open that node
+			//thanks Chris for your book :-) - page 294 f.
+
+			string nodeappend = std::to_string((long)dec->ida_func->start_ea);
+
+			nodename.append(nodeappend.c_str());
+
+			netnode cno(nodename.c_str());
+
+			// read existing comment if any
+
+			int len = cno.supstr(y, NULL, 0);
+
 			qstring comment;
-				
-			if (ask_str(&comment, HIST_IDENT, "Please enter your comment")) {
 
-				msg("Added comment \"%s\" on line %d\n", comment.c_str(), y);
+			if (len > 0) {
 
-				//TODO: code to add an comment 
+				char* obuf = new char[len];		//allocate a buffer of sufficient size
+				cno.supval(y, obuf, len);		//extract data from the supval
+
+				comment = obuf;
+
+			}
+			
+			// sorry only, one line comments for now
+			// TODO: Allow multi lines 
+
+			if (ask_str(&comment, HIST_CMT, "Please enter your comment")) {
+
+				// save comment to a netnode
+				// https://www.hex-rays.com/products/ida/support/sdkdoc/netnode_8hpp.html
+
+				// check if node exists, if not create it
+				if (cno == BADNODE) {
+					cno.create(nodename.c_str());
+				}
+
+				//save comment at array index "linenumber"
+				cno.supset(y, comment.c_str());
+
+				refresh_widget(w);
+ 
+				//msg("Added comment \"%s\" on line %d\n", comment.c_str(), y);
 			}		
 			           
 			return true;
@@ -413,6 +514,8 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 	}
 	return false;
 }
+
+
 
 static bool idaapi ct_dblclick(TWidget* cv, int shift, void* ud) {
 	//   msg("Double clicked on: %s\n", word.c_str());
@@ -818,50 +921,110 @@ void decompile_at(ea_t addr, TWidget* w) {
 	if (func) {
 		int res = do_decompile(func->start_ea, func->end_ea, &ast);
 		if (ast) {
-			//         msg("got a Functon tree!\n");
+			// msg("got a Functon tree!\n");
 			Decompiled* dec = new Decompiled(ast, func);
 
-			//now try to map ghidra stack variable names to ida stack variable names
-   //         msg("mapping ida names to ghidra names\n");
+			// now try to map ghidra stack variable names to ida stack variable names
+			// msg("mapping ida names to ghidra names\n");
 			map_ghidra_to_ida(dec);
 
 			vector<string> code;
-			//         msg("Generating C code\n");
+
+			// Generating C code
 			dec->ast->print(&code);
 
-			//         msg("Displaying C code\n");
+			// Displaying C code
 			strvec_t* sv = new strvec_t();
+			
 			dec->set_ud(sv);
+
+			// build code view line by line from generated ast including comments
+
+			qstring nodename = NETNODEPRE;
+
+			string nodeappend = std::to_string((long)dec->ida_func->start_ea);
+
+			nodename.append(nodeappend.c_str());
+
+			netnode cno(nodename.c_str());
+
+			int ci = 0; // lines start at 0 in IDA
+
 			for (vector<string>::iterator si = code.begin(); si != code.end(); si++) {
-				sv->push_back(simpleline_t(si->c_str()));
+
+				qstring pline = si->c_str();
+
+				if (cno != BADNODE) {
+					// get length of entry
+					int len = cno.supstr(ci, NULL, 0);
+
+					if (len > 0) {
+
+						//allocate a buffer of sufficient size
+						char* outstr = new char[len];
+
+						// get the comment at the current line number in iteration from superval
+						cno.supval(ci, outstr, len);
+
+						// append it as comment
+						pline.append(" // ");
+						pline.append(outstr);
+					}
+
+					sv->push_back(simpleline_t(pline));
+
+				}
+				else {
+					sv->push_back(simpleline_t(pline));
+				}
+
+				ci++;
 			}
 
 			qstring func_name;
 			qstring fmt;
+			
 			get_func_name(&func_name, func->start_ea);
+
+			// TODO: Improve tab titles
 			string title = get_available_title();
+
 			fmt.sprnt("Ghidra code  - %s", title.c_str());   // make the suffix change with more windows
 
 			simpleline_place_t s1;
 			simpleline_place_t s2((int)(sv->size() - 1));
-
 			if (w == NULL) {
-				w = create_custom_viewer(fmt.c_str(), &s1, &s2,
-					&s1, NULL, sv, &handlers, sv);
+
+				// create new code viewer
+				// sv = viewer content
+				w = create_custom_viewer(fmt.c_str(), &s1, &s2, &s1, NULL, sv, &handlers, sv);
+
 				TWidget* code_view = create_code_viewer(w);
+
+				/// Specify that the given code viewer is used to display source code
 				set_code_viewer_is_source(code_view);
+
 				display_widget(code_view, WOPN_DP_TAB);
+
 				histories[w].push_back(addr);
 				views[w] = title;
+
 				titles.insert(title);
 			}
 			else {
+
+				// if viewer already exists
+
 				callui(ui_custom_viewer_set_userdata, w, sv);
+
 				refresh_custom_viewer(w);
 				repaint_custom_viewer(w);
+
 				delete function_map[w];
 			}
+
 			function_map[w] = dec;
+			
 		}
 		//      msg("do_decompile returned: %d\n%s\n%s\n", res, code.c_str(), cfunc.c_str());
 	}
@@ -873,6 +1036,7 @@ const char* tag_remove(const char* tagged) {
 	return ll.c_str();
 }
 
+// everything starts here
 bool idaapi blc_run(size_t /*arg*/) {
 	ea_t addr = get_screen_ea();
 	decompile_at(addr);
