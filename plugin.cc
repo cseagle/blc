@@ -18,8 +18,14 @@
 
    Changelog:
    ----------
-   2020-04-24	- fixed something in the externs recognition for iOS and other (XTRN) - Alexander Pick (alx@pwn.su)
-				- started to integgrate string recognition
+   
+   Changes by Alexander Pick (alx@pwn.su)
+
+   2020-04-24	- fixed something in the externs recognition for iOS and other (XTRN) 
+				- string recognition
+   2020-04-27	- added new comment functionality
+   2020-04-28	- IDA 7.5 compatibility
+
 */
 
 #ifndef USE_DANGEROUS_FUNCTIONS
@@ -33,6 +39,8 @@
 #ifndef NO_OBSOLETE_FUNCS
 #define NO_OBSOLETE_FUNCS
 #endif
+
+#define __DEFINE_PH__ 1
 
 #include <pro.h>
 #include <ida.hpp>
@@ -542,7 +550,11 @@ map<int, string> proc_map;
 
 map<int, string> return_reg_map;
 
+#if IDA_SDK_VERSION < 750
 int idaapi blc_init(void);
+#else
+size_t idaapi blc_init(void);
+#endif
 
 void idaapi blc_term(void);
 

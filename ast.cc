@@ -18,7 +18,10 @@
 
    Changelog:
    ----------
-   2020-04-23 Color changes - Alexander Pick (alx@pwn.su)
+
+   Changes by Alexander Pick (alx@pwn.su)
+ 
+   2020-04-23	- colors and syntax highlightning added
 
 */
 

@@ -171,7 +171,11 @@ void mips_setup(uint64_t start, uint64_t end) {
    add_tracked_reg(regs, 0xc8, start >> 32, 4);
 }
 
+#if  0 //IDA_SDK_VERSION < 750
 int idaapi blc_init(void) {
+#else
+size_t idaapi blc_init(void) {
+#endif
    //init_query_handlers();
 
    //do ida related init
