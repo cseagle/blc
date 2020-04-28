@@ -15,6 +15,13 @@
    You should have received a copy of the GNU General Public License along with
    this program; if not, write to the Free Software Foundation, Inc., 59 Temple
    Place, Suite 330, Boston, MA 02111-1307 USA
+
+   Changelog:
+   ----------
+   
+   Changes by Alexander Pick (alx@pwn.su)
+
+   2020-04-28	- Added a selector to correct the return value of blc_init() for IDA 7.5 
 */
 
 #include <iostream>
@@ -171,63 +178,62 @@ void mips_setup(uint64_t start, uint64_t end) {
    add_tracked_reg(regs, 0xc8, start >> 32, 4);
 }
 
-#if  0 //IDA_SDK_VERSION < 750
-int idaapi blc_init(void) {
-#else
-size_t idaapi blc_init(void) {
-#endif
-   //init_query_handlers();
+int blc_init(void) {
 
-   //do ida related init
-   init_ida_ghidra();
+    //init_query_handlers();
 
-   startDecompilerLibrary(ghidra_dir.c_str());
+    //do ida related init
+    init_ida_ghidra();
 
-   err_stream = new stringstream();
+    startDecompilerLibrary(ghidra_dir.c_str());
 
-//   IfaceCapability::registerAllCommands(term);  // Register commands for decompiler and all modules
+    err_stream = new stringstream();
 
-   string filename;
-   get_input_file_path(filename);
+    //   IfaceCapability::registerAllCommands(term);  // Register commands for decompiler and all modules
 
-   get_sleigh_id(sleigh_id);
+    string filename;
+    get_input_file_path(filename);
 
-   //implement most of IfcLoadFile::execute here since file is
-   //already loaded in IDA
+    get_sleigh_id(sleigh_id);
 
-   arch = new ida_arch(filename, sleigh_id, err_stream);
+    //implement most of IfcLoadFile::execute here since file is
+    //already loaded in IDA
 
-   DocumentStorage store;  // temporary storage for xml docs
+    arch = new ida_arch(filename, sleigh_id, err_stream);
 
-   string errmsg;
-   bool iserror = false;
-   try {
-      arch->init(store);
-      //at this point we have arch->context (a ContextInternal) available
-      // we can do things like:
-      // context->setVariableDefault("addrsize",1);  // Address size is 32-bits
-      // context->setVariableDefault("opsize",1);    // Operand size is 32-bits
-      // that make sense for our architecture
-   } catch(XmlError &err) {
-      errmsg = err.explain;
-      iserror = true;
-   } catch(LowlevelError &err) {
-      errmsg = err.explain;
-      iserror = true;
-   }
-   if (iserror) {
-      msg("%s\n", errmsg.c_str());
-      msg("Could not create architecture\n");
-      delete arch;
-      arch = NULL;
-      return PLUGIN_SKIP;
-   }
+    DocumentStorage store;  // temporary storage for xml docs
 
-   check_err_stream();
+    string errmsg;
+    bool iserror = false;
+    try {
+        arch->init(store);
+        //at this point we have arch->context (a ContextInternal) available
+        // we can do things like:
+        // context->setVariableDefault("addrsize",1);  // Address size is 32-bits
+        // context->setVariableDefault("opsize",1);    // Operand size is 32-bits
+        // that make sense for our architecture
+    }
+    catch (XmlError & err) {
+        errmsg = err.explain;
+        iserror = true;
+    }
+    catch (LowlevelError & err) {
+        errmsg = err.explain;
+        iserror = true;
+    }
+    if (iserror) {
+        msg("%s\n", errmsg.c_str());
+        msg("Could not create architecture\n");
+        delete arch;
+        arch = NULL;
+        return PLUGIN_SKIP;
+    }
 
-   msg("Ghidra architecture successfully created\n");
+    check_err_stream();
 
-   return PLUGIN_KEEP;
+    msg("Ghidra architecture successfully created\n");
+
+    return PLUGIN_KEEP;
 }
 
 void idaapi blc_term(void) {

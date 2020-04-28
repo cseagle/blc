@@ -422,7 +422,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 					//last chance - see if word refers to a global, then ask IDA its type
 				}
 				else {
-					//                  msg("You seem to be referring to this decl: %s on line %d col %d\n", decl->var->name.c_str(), decl->line_begin, decl->col_start);
+					// msg("You seem to be referring to this decl: %s on line %d col %d\n", decl->var->name.c_str(), decl->line_begin, decl->col_start);
 				}
 #if 0
 				//not ready yet
@@ -567,10 +567,12 @@ map<int, string> proc_map;
 
 map<int, string> return_reg_map;
 
-#if IDA_SDK_VERSION < 750
-int idaapi blc_init(void);
+int blc_init_old(void);
+
+#if IDA_SDK_VERSION > 740	
+size_t idaapi blc_init_new(void);
 #else
-size_t idaapi blc_init(void);
+int idaapi blc_init_new(void);
 #endif
 
 void idaapi blc_term(void);
@@ -1448,6 +1450,19 @@ bool is_string(const string& name) {
 	return false;
 }
 
+
+#if IDA_SDK_VERSION > 740	
+size_t idaapi blc_init_new(void) {
+	size_t res = blc_init_new();
+	return res;
+}
+#else
+int idaapi blc_init_new(void) {
+	int res = blc_init_new();
+	return res;
+}
+#endif
+
 //--------------------------------------------------------------------------
 char comment[] = "Ghidra decompiler integration.";
 
@@ -1461,7 +1476,7 @@ plugin_t PLUGIN =
 {
   IDP_INTERFACE_VERSION,
   0,                    // plugin flags
-  blc_init,          // initialize
+  blc_init_new,          // initialize
   blc_term,          // terminate. this pointer may be NULL.
   blc_run,           // invoke plugin
   comment,              // long comment about the plugin
