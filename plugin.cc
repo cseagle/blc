@@ -282,6 +282,25 @@ static void refresh_widget(TWidget* w) {
 
 }
 
+//get the line number in the current custom viewer
+int get_custom_viewer_line_number(TWidget* w, int *x, int *y) {
+
+	place_t* pl = get_custom_viewer_place(w, false, x, y);
+	tcc_place_type_t pt = get_viewer_place_type(w);
+	
+	if (pl && pt == TCCPT_SIMPLELINE_PLACE) {
+
+		simpleline_place_t* slp = (simpleline_place_t*)pl;
+
+		return slp->n;
+	
+	}
+	else {
+		msg("Couldn't retrieve line number\n");
+		return false;
+	}
+}
+
 //---------------------------------------------------------------------------
 // Keyboard callback
 static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
@@ -381,16 +400,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				int x = -1;
 				int y = -1;
 
-				place_t* pl = get_custom_viewer_place(w, false, &x, &y);
-				tcc_place_type_t pt = get_viewer_place_type(w);
-				if (pl && pt == TCCPT_SIMPLELINE_PLACE) {
-					simpleline_place_t* slp = (simpleline_place_t*)pl;
-					y = slp->n;
-				}
-				else {
-					msg("Couldn't retrieve line number\n");
-					return false;
-				}
+				y = get_custom_viewer_line_number(w,&x,&y);
 
 				//indent doesn't get factored into ast x/y data
 				for (const char* cptr = line.c_str(); *cptr == ' '; cptr++) {
@@ -436,12 +446,19 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 		case IK_DIVIDE:
 		case IK_OEM_2:
 			{ 
+
 			//Add eol comment on current line
-			int x, y;
-		
-			if (get_custom_viewer_place(w, false, &x, &y) == NULL) {
+
+			//get current line number
+			int x = -1;
+			int y = -1;
+
+			y = get_custom_viewer_line_number(w, &x, &y);
+
+			if(y == NULL) {
 				return false;
 			}
+			//msg("x:%i y:%i\n", x, y);
 
 			Decompiled* dec = function_map[w];
 
@@ -490,7 +507,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 				refresh_widget(w);
  
-				//msg("Added comment \"%s\" on line %d\n", comment.c_str(), y);
+				msg("Added comment \"%s\" on line %d\n", comment.c_str(), y);
 			}		
 			           
 			return true;
