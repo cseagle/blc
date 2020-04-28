@@ -114,5 +114,7 @@ string get_string(const string& name);
 
 bool is_string(const string& name);
 
+int blc_init(void);
+
 #endif
 

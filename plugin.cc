@@ -1453,12 +1453,12 @@ bool is_string(const string& name) {
 
 #if IDA_SDK_VERSION > 740	
 size_t idaapi blc_init_new(void) {
-	size_t res = blc_init_new();
+	size_t res = blc_init();
 	return res;
 }
 #else
 int idaapi blc_init_new(void) {
-	int res = blc_init_new();
+	int res = blc_init();
 	return res;
 }
 #endif
