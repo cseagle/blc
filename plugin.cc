@@ -173,7 +173,7 @@ static bool get_current_word(TWidget* v, bool mouse, qstring& word, qstring* lin
 	char* ptr = line->begin() + x;
 	char* end = ptr;
 	// find the end of the word
-	while ((qisalnum(*end) || *end == '_') && *end != '\0') {
+	while ((qisalnum(*end) || *end == '_' || *end == ':') && *end != '\0') { // added : as part of the words for std:: etc. names
 		end++;
 	}
 
@@ -182,11 +182,11 @@ static bool get_current_word(TWidget* v, bool mouse, qstring& word, qstring* lin
 	}
 
 	// find the beginning of the word
-	while (ptr > line->begin() && (qisalnum(ptr[-1]) || ptr[-1] == '_')) {
+	while (ptr > line->begin() && (qisalnum(ptr[-1]) || ptr[-1] == '_' || *end == ':')) {
 		ptr--;
 	}
 	if (!qisalpha(*ptr) && *ptr != '_') {
-		//starts with a digit
+		//starts with a digit or something else
 		return false;
 	}
 	word = qstring(ptr, end - ptr);
