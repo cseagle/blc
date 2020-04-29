@@ -194,20 +194,31 @@ static bool get_current_word(TWidget* v, bool mouse, qstring& word, qstring* lin
 }
 
 static bool navigate_to_word(TWidget* w, bool cursor) {
+
 	qstring word;
+
 	qstring line;
+
 	if (get_current_word(w, cursor, word, &line)) {
+
 		ea_t ea = get_name_ea(BADADDR, word.c_str());
+
 		if (ea != BADADDR) {
+
 			if (is_function_start(ea) && !is_extern_addr(ea)) {
+
 				map<TWidget*, qvector<ea_t> >::iterator mi = histories.find(w);
+
 				if (mi == histories.end() || mi->second.size() == 0 || mi->second.back() != ea) {
 					histories[w].push_back(ea);
 					decompile_at(ea, w);
 				}
+
 			}
 			else {
+
 				jumpto(ea);
+
 			}
 			return true;
 		}
@@ -310,7 +321,32 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 	if (shift == 0) { 
 
 		strvec_t* sv = (strvec_t*)ud;
+		
 		switch (key) {
+
+		case 'X': {
+			//view xrefs to function
+			qstring word;
+			qstring line;
+
+			if (get_current_word(w, false, word, &line)) {
+
+				qstring mname(word);
+
+				ea_t name_ea = get_name_ea(BADADDR, word.c_str());
+
+				if (name_ea == BADADDR) {
+					//somehow the original name is invalid
+					msg("xref: %s has no addr\n", word.c_str());
+					return -1;
+				}
+
+				open_xrefs_window(name_ea);
+
+				return true;
+			}
+			return true;
+		}
 		case 'G':
 			if (ask_addr(&addr, "Jump address")) {
 				func_t* f = get_func(addr);
@@ -536,7 +572,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			return navigate_to_word(w, false);
 		}
 		default:
-			     // msg("Detected key press: 0x%x\n", key);
+			     //msg("Detected key press: 0x%x\n", key);
 			break;
 		}
 	}
