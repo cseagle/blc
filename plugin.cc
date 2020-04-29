@@ -1375,14 +1375,38 @@ bool get_str_lit(uint64_t addr, string* str) {
 	qstring res;
 
 	flags_t f = get_full_flags(addr);
+	
+	//msg("get_str_lit(): %x\n",addr);
 
 	if (is_strlit(f)) {
+
+		//msg("get_str_lit(): is_strlit()\n");
 
 		get_strlit_contents(&res, addr, -1, STRTYPE_C);
 		
 		*str = res.c_str();
 		
 		return true;
+	}
+	//try to resolve another way...
+	if (is_off(f, OPND_ALL)) {
+
+		refinfo_t ri;
+
+		get_refinfo(&ri, addr, OPND_ALL);
+
+		//msg("get_str_lit(): refbase %x target %x\n", ri.base, ri.target);
+
+		uval_t v; //target addr
+
+		get_data_value(&v, addr, 0);
+		
+		//msg("get_str_lit(): %x is offset with target %x\n", addr, v);
+
+		get_str_lit(ri.base + v, str);
+
+		return true;
+
 	}
 
 	return false;
@@ -1429,6 +1453,8 @@ bool get_string_ea(uint64_t addr, string *str) {
 
 			get_str_lit(target, str);
 
+			msg("CODE: offset %x\n", addr);
+
 		} 
 		else if (is_data(f)) {
 
@@ -1437,6 +1463,8 @@ bool get_string_ea(uint64_t addr, string *str) {
 			get_data_value(&v, addr, 0);
 
 			get_str_lit(v, str);
+
+			msg("DATA: offset %x %x\n", addr, v);
 	
 		}
 			
