@@ -1,6 +1,7 @@
 /*
    Source for blc IdaPro plugin
    Copyright (c) 2019 Chris Eagle
+   Copyright (c) 2020 Alexander Pick
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the Free
@@ -18,10 +19,10 @@
 
    Changelog:
    ----------
-   
+
    Changes by Alexander Pick (alx@pwn.su)
 
-   2020-04-24	- fixed something in the externs recognition for iOS and other (XTRN) 
+   2020-04-24	- fixed something in the externs recognition for iOS and other (XTRN)
 				- string recognition
    2020-04-27	- added new comment functionality
    2020-04-28	- IDA 7.5 compatibility
@@ -132,6 +133,8 @@ static map<TWidget*, Decompiled*> function_map;
 static set<string> titles;
 
 arch_map_t arch_map;
+
+string sleigh_id;
 
 static string get_available_title() {
 	string title("A");
@@ -274,10 +277,11 @@ static void refresh_widget(TWidget* w) {
 
 			sv->push_back(simpleline_t(pline));
 
-		} else {
-			
+		}
+		else {
+
 			sv->push_back(simpleline_t(pline));
-		
+
 		}
 
 		ci++;
@@ -294,17 +298,17 @@ static void refresh_widget(TWidget* w) {
 }
 
 //get the line number in the current custom viewer
-int get_custom_viewer_line_number(TWidget* w, int *x, int *y) {
+int get_custom_viewer_line_number(TWidget* w, int* x, int* y) {
 
 	place_t* pl = get_custom_viewer_place(w, false, x, y);
 	tcc_place_type_t pt = get_viewer_place_type(w);
-	
+
 	if (pl && pt == TCCPT_SIMPLELINE_PLACE) {
 
 		simpleline_place_t* slp = (simpleline_place_t*)pl;
 
 		return slp->n;
-	
+
 	}
 	else {
 		msg("Couldn't retrieve line number\n");
@@ -318,44 +322,36 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 	ea_t addr = 0;
 
-	msg("Detected key press: 0x%x\n", key);
+	//msg("Detected key press: 0x%x\n", key);
 
-	if (shift == 0) { 
+	if (shift == 0) {
 
 		strvec_t* sv = (strvec_t*)ud;
-		
+
 		switch (key) {
-		
-		//Refresh decompile
-		case 0x52: { //R - If I define it as R it won't work for some reason...
 
-			qstring word;
-			qstring line;
+			//Refresh decompile
+		/*case 0x52: { //R - If I define it as R it won't work for some reason...
 
-			if (get_current_word(w, false, word, &line)) {
+			Decompiled* dec = function_map[w];
 
-				qstring mname(word);
+			func_t* f = dec->ida_func;
 
-				ea_t name_ea = get_name_ea(BADADDR, word.c_str());
+			if (f) {
 
-				if (name_ea == BADADDR) {
-					return -1;
-				}
+				msg("Re-Decompiled function at 0x%x.\n", f->start_ea);
 
-				func_t* f = get_func(name_ea);
-				if (f) {
-					decompile_at(name_ea, w);
-					msg("Re-Decompiled function at 0x%x.\n", f->start_ea);
-				}
+				blc_init(); // we need to hard reset things to get the symboltab reloaded, dirty solution but best I came up with atm
 
-				return true;
+				decompile_at(f->start_ea, w);
 
+				refresh_widget(w);
 			}
 
 			return true;
 
-		}
-		// Open XRefs Window for focused function
+		}*/
+			// Open XRefs Window for focused function
 		case 'X': {
 			//view xrefs to function
 			qstring word;
@@ -379,7 +375,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			}
 			return true;
 		}
-		// Jump to address 	
+				// Jump to address 	
 		case 'G':
 			if (ask_addr(&addr, "Jump address")) {
 				func_t* f = get_func(addr);
@@ -388,8 +384,8 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				}
 			}
 			return true;
-		// rename the thing under the cursor
-		case 'N': { 
+			// rename the thing under the cursor
+		case 'N': {
 			Decompiled* dec = function_map[w];
 			qstring word;
 			qstring line;
@@ -450,13 +446,16 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			}
 			if (refresh) {
 
+				blc_init(); // need to refresh symboltab in the lower layer or we will have broken links after navigating - dirty solution 
+							// TODO: find something better
+
 				refresh_widget(w);
-			
+
 			}
 			return true;
 		}
-		//Set type for the thing under the cursor
-		case 'Y': { 
+				//Set type for the thing under the cursor
+		case 'Y': {
 			Decompiled* dec = function_map[w];  //the ast for the function we are editing
 			qstring word;
 			qstring line;
@@ -471,7 +470,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				int x = -1;
 				int y = -1;
 
-				y = get_custom_viewer_line_number(w,&x,&y);
+				y = get_custom_viewer_line_number(w, &x, &y);
 
 				//indent doesn't get factored into ast x/y data
 				for (const char* cptr = line.c_str(); *cptr == ' '; cptr++) {
@@ -512,11 +511,11 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 #endif
 			}
 			return true;
-		}
-		// write a comment
+			}
+				// write a comment
 		case IK_DIVIDE:		// on an short US keyboard you cannot add an comment, IK_OEM_2 is the other "/"
 		case IK_OEM_2:
-			{ 
+		{
 
 			//Add eol comment on current line
 
@@ -526,7 +525,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 			y = get_custom_viewer_line_number(w, &x, &y);
 
-			if(y == NULL) {
+			if (y == NULL) {
 				return false;
 			}
 			//msg("x:%i y:%i\n", x, y);
@@ -559,7 +558,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				comment = obuf;
 
 			}
-			
+
 			// sorry only, one line comments for now
 			// TODO: Allow multi lines 
 
@@ -577,10 +576,10 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				cno.supset(y, comment.c_str());
 
 				refresh_widget(w);
- 
+
 				msg("Added comment \"%s\" on line %d\n", comment.c_str(), y);
-			}		
-			           
+			}
+
 			return true;
 		}
 		// back
@@ -604,17 +603,17 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			}
 			break;
 		}
-		// navigate to
+					  // navigate to
 		case IK_RETURN: {  //jump to symbol under cursor
 			return navigate_to_word(w, false);
 		}
 		default:
-			   //  msg("Detected key press: 0x%x\n", key);
+			//  msg("Detected key press: 0x%x\n", key);
 			break;
 		}
-	}
+		}
 	return false;
-}
+	}
 
 
 
@@ -918,7 +917,7 @@ bool get_sleigh_id(string& sleigh) {
 	default:
 		return false;
 	}
-	msg("Using sleigh id: %s\n", sleigh.c_str());
+	
 	return true;
 }
 
@@ -1042,7 +1041,7 @@ void decompile_at(ea_t addr, TWidget* w) {
 
 			// Displaying C code
 			strvec_t* sv = new strvec_t();
-			
+
 			dec->set_ud(sv);
 
 			// build code view line by line from generated ast including comments
@@ -1091,7 +1090,7 @@ void decompile_at(ea_t addr, TWidget* w) {
 
 			qstring func_name;
 			qstring fmt;
-			
+
 			get_func_name(&func_name, func->start_ea);
 
 			// TODO: Improve tab titles
@@ -1132,7 +1131,7 @@ void decompile_at(ea_t addr, TWidget* w) {
 			}
 
 			function_map[w] = dec;
-			
+
 		}
 		//      msg("do_decompile returned: %d\n%s\n%s\n", res, code.c_str(), cfunc.c_str());
 	}
@@ -1412,7 +1411,7 @@ bool get_str_lit(uint64_t addr, string* str) {
 	qstring res;
 
 	flags_t f = get_full_flags(addr);
-	
+
 	//msg("get_str_lit(): %x\n",addr);
 
 	if (is_strlit(f)) {
@@ -1420,9 +1419,9 @@ bool get_str_lit(uint64_t addr, string* str) {
 		//msg("get_str_lit(): is_strlit()\n");
 
 		get_strlit_contents(&res, addr, -1, STRTYPE_C);
-		
+
 		*str = res.c_str();
-		
+
 		return true;
 	}
 	//try to resolve another way...
@@ -1437,7 +1436,7 @@ bool get_str_lit(uint64_t addr, string* str) {
 		uval_t v; //target addr
 
 		get_data_value(&v, addr, 0);
-		
+
 		//msg("get_str_lit(): %x is offset with target %x\n", addr, v);
 
 		get_str_lit(ri.base + v, str);
@@ -1450,7 +1449,7 @@ bool get_str_lit(uint64_t addr, string* str) {
 }
 
 
-bool get_string_ea(uint64_t addr, string *str) {
+bool get_string_ea(uint64_t addr, string* str) {
 
 	qstring res;
 
@@ -1463,7 +1462,7 @@ bool get_string_ea(uint64_t addr, string *str) {
 	flags_t f = get_full_flags(addr);
 
 	if (is_off(f, OPND_ALL)) {
- 
+
 		//msg("is Offset\n");
 
 		refinfo_t ri;
@@ -1485,14 +1484,14 @@ bool get_string_ea(uint64_t addr, string *str) {
 			decode_insn(&out, addr);
 
 			ea_t value = out.ops->addr;
-			
+
 			ea_t target = value - ri.tdelta + ri.base;
 
 			get_str_lit(target, str);
 
 			msg("CODE: offset %x\n", addr);
 
-		} 
+		}
 		else if (is_data(f)) {
 
 			uval_t v;
@@ -1502,9 +1501,9 @@ bool get_string_ea(uint64_t addr, string *str) {
 			get_str_lit(v, str);
 
 			msg("DATA: offset %x %x\n", addr, v);
-	
+
 		}
-			
+
 	}
 
 	if (*str != "") {
@@ -1521,13 +1520,13 @@ string get_string(const string& name) {
 
 	bool res = get_string_ea(ea, &str);
 
-/*	if (!res) {
-		msg("Error getting string for %s (ea: %x)\n", name.c_str(), ea);
-	}
-	else {
-		msg("str: %s\n", str.c_str());
-	}
-*/
+	/*	if (!res) {
+			msg("Error getting string for %s (ea: %x)\n", name.c_str(), ea);
+		}
+		else {
+			msg("str: %s\n", str.c_str());
+		}
+	*/
 	return str.c_str();
 }
 
@@ -1554,12 +1553,19 @@ bool is_string(const string& name) {
 
 #if IDA_SDK_VERSION > 740	
 size_t idaapi blc_init_new(void) {
+
 	size_t res = blc_init();
+
+	msg("Ghidra Decompiler (blc) ready.\nUsing sleigh id: %s\n", sleigh_id.c_str());
+
 	return res;
 }
 #else
 int idaapi blc_init_new(void) {
 	int res = blc_init();
+
+	msg("Ghidra Decompiler (blc) ready.\nUsing sleigh id: %s\n", sleigh_id.c_str());
+
 	return res;
 }
 #endif

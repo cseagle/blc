@@ -121,8 +121,6 @@ mark the line and press `/`. If you have the hex-rays decompiler installed, some
 might conflict and need to be changed for hex-rays. A feature to freely select the 
 hotkey values is planned. 
 
-If you want to refresh the source view press `R`. 
-
 ## POTENTIAL FUTURE WORK
 
 * Allow user to set data types for symbols in the source view

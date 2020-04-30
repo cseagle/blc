@@ -1,6 +1,7 @@
 /*
    Source for the blc IdaPro plugin
    Copyright (c) 2019 Chris Eagle
+   Copyright (c) 2020 Alexander Pick
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the Free
@@ -46,10 +47,17 @@ using std::map;
 #include "ida_arch.hh"
 #include "ast.hh"
 
+//#define DEBUG_RUN 1
+
+#ifdef DEBUG_RUN
+#define dmsg(x, ...) msg(x, __VA_ARGS__)
+#else
+#define dmsg(x, ...)
+#endif
+
 stringstream *err_stream;
 
-static string sleigh_id;
-ida_arch *arch;  // in lieu of Architecture *IfaceDecompData::conf
+ida_arch *arch;             // in lieu of Architecture *IfaceDecompData::conf
 
 void escape_value(const string &value, string &res) {
    const char *content = value.c_str();
@@ -231,7 +239,7 @@ int blc_init(void) {
 
     check_err_stream();
 
-    msg("Ghidra architecture successfully created\n");
+    dmsg("Ghidra architecture successfully created\n");
 
     return PLUGIN_KEEP;
 }
@@ -269,7 +277,7 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
       string func_name;
       get_func_name(func_name, start_ea);
 
-//      msg("Decompiling %s\n", func_name.c_str());
+      dmsg("Decompiling %s\n", func_name.c_str());
 
       arch->clearAnalysis(fd); // Clear any old analysis
 
@@ -284,14 +292,16 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 
       if (res < 0) {
          ostringstream os;
-//         msg("Break at ");
+         dmsg("Break at ");
          arch->allacts.getCurrent()->printState(os);
          msg("%s\n", os.str().c_str());
       }
       else {
-//         msg("Decompilation complete");
+
+         dmsg("Decompilation complete\n");
+         
          if (res == 0) {
-//            msg(" (no change)");
+            dmsg(" (no change)\n");
          }
          stringstream ss;
          arch->print->setIndentIncrement(3);
@@ -312,18 +322,23 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 
          if (doc) {
             string pretty;
+            
             dump_el(doc->getRoot(), 0, pretty);
-//            msg("%s\n", pretty.c_str());
+
+            //this will dump the xml 
+            //dmsg("%s\n", pretty.c_str());
 
             *result = func_from_xml(doc->getRoot(), start_ea);
-//            msg("%s\n", c_code.c_str());
+
+            //this will dump the pseudocode
+            //dmsg("%s\n", c_code.c_str());
             delete doc;
          }
       }
       check_err_stream();
    }
    else {
-//      msg("Error, no Funcdata at 0x%x\n", (uint32_t)ea);
+       dmsg("Error, no Funcdata at 0x%x\n", (uint32_t)start_ea);
    }
    return res;
 }
