@@ -79,6 +79,14 @@
 #define DIRSEP "/"
 #endif
 
+//#define DEBUG_PLUGIN 1
+
+#ifdef DEBUG_PLUGIN
+#define dmsg(x, ...) msg(x, __VA_ARGS__)
+#else
+#define dmsg(x, ...)
+#endif
+
 using std::iostream;
 using std::ifstream;
 using std::istreambuf_iterator;
@@ -365,7 +373,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 				if (name_ea == BADADDR) {
 					//somehow the original name is invalid
-					//msg("xref: %s has no addr\n", word.c_str());
+					dmsg("xref: %s has no addr\n", word.c_str());
 					return -1;
 				}
 
@@ -392,7 +400,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			bool refresh = false;
 			if (get_current_word(w, false, word, &line)) {
 				string sword(word.c_str());
-				//               msg("Try to rename: %s\n", word.c_str());
+				dmsg("Try to rename: %s\n", word.c_str());
 				if (!is_reserved(sword)) { //can't rename to a reserved word
 					qstring new_name(word);
 					map<string, LocalVar*>::iterator mi = dec->locals.find(sword);
@@ -404,7 +412,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 							//need to make sure new name will be legal
 							if (is_reserved(newname) || dec->locals.find(newname) != dec->locals.end() ||
 								get_name_ea(BADADDR, newname.c_str()) != BADADDR) {
-								//                           msg("rename fail 1\n");
+								msg("rename: \"newname\" is not a valid new name\n");
 								return true;
 							}
 							if (lv->offset != BADADDR) { //stack var
@@ -417,7 +425,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 									refresh = true;
 								}
 								else {
-									//                              msg("set_member_name failed\n");
+									dmsg("set_member_name failed\n");
 								}
 							}
 							else { //not stack var, reg var??
@@ -437,10 +445,8 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 						//renming a global
 						string snew_name(new_name.c_str());
 						dec->ast->rename(sword, snew_name);
-						//                     msg("rename: %s -> %s\n", word.c_str(), new_name.c_str());
+						dmsg("rename: %s -> %s\n", word.c_str(), new_name.c_str());
 						refresh = true;
-					}
-					else {
 					}
 				}
 			}
@@ -481,11 +487,11 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				map<string, LocalVar*>::iterator mi = dec->locals.find(sword);
 				VarDecl* decl = NULL;
 				if (mi != dec->locals.end()) {
-					//                  msg("Find decl by name (%s)\n", sword.c_str());
+					dmsg("Find decl by name (%s)\n", sword.c_str());
 					decl = find_decl(dec->ast, sword);
 				}
 				else {
-					//                  msg("Find decl by x,y (%d,%d)\n", x, y);
+					dmsg("Find decl by x,y (%d,%d)\n", x, y);
 					decl = find_decl(dec->ast, x, y);
 				}
 				if (decl == NULL) {
@@ -528,7 +534,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			if (y == NULL) {
 				return false;
 			}
-			//msg("x:%i y:%i\n", x, y);
+			dmsg("comment: x:%i y:%i\n", x, y);
 
 			Decompiled* dec = function_map[w];
 
@@ -608,7 +614,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			return navigate_to_word(w, false);
 		}
 		default:
-			//  msg("Detected key press: 0x%x\n", key);
+			dmsg("Detected key press: 0x%x\n", key);
 			break;
 		}
 		}
@@ -686,7 +692,7 @@ int do_ida_rename(qstring& name, ea_t func) {
 		ea_t new_name_ea = get_name_ea(func, name.c_str());
 		if (new_name_ea != BADADDR) {
 			//new name is same as existing name
-   //         msg("rename: new name already in use\n", name.c_str());
+            msg("rename: new name already in use\n", name.c_str());
 			return 0;
 		}
 		//      msg("Custom rename: %s at adddress 0x%zx\n", name.c_str(), name_ea);
@@ -1342,7 +1348,7 @@ bool simplify_deref(const string& name, string& new_name) {
 	ea_t addr = get_name_ea(BADADDR, name.c_str());
 	if (addr != BADADDR && is_read_only(addr) && is_pointer_var(addr, (uint32_t)ph.max_ptr_size(), &tgt)) {
 		if (get_name(new_name, tgt, 0)) {
-			//         msg("could simplify *%s to %s\n", name.c_str(), new_name.c_str());
+			dmsg("could simplify *%s to %s\n", name.c_str(), new_name.c_str());
 			return true;
 		}
 	}
@@ -1489,7 +1495,7 @@ bool get_string_ea(uint64_t addr, string* str) {
 
 			get_str_lit(target, str);
 
-			msg("CODE: offset %x\n", addr);
+			dmsg("CODE: offset %x\n", addr);
 
 		}
 		else if (is_data(f)) {
@@ -1500,7 +1506,7 @@ bool get_string_ea(uint64_t addr, string* str) {
 
 			get_str_lit(v, str);
 
-			msg("DATA: offset %x %x\n", addr, v);
+			dmsg("DATA: offset %x %x\n", addr, v);
 
 		}
 
