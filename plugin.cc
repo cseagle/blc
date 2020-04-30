@@ -318,12 +318,44 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 	ea_t addr = 0;
 
+	msg("Detected key press: 0x%x\n", key);
+
 	if (shift == 0) { 
 
 		strvec_t* sv = (strvec_t*)ud;
 		
 		switch (key) {
+		
+		//Refresh decompile
+		case 0x52: { //R - If I define it as R it won't work for some reason...
 
+			qstring word;
+			qstring line;
+
+			if (get_current_word(w, false, word, &line)) {
+
+				qstring mname(word);
+
+				ea_t name_ea = get_name_ea(BADADDR, word.c_str());
+
+				if (name_ea == BADADDR) {
+					return -1;
+				}
+
+				func_t* f = get_func(name_ea);
+				if (f) {
+					decompile_at(name_ea, w);
+					msg("Re-Decompiled function at 0x%x.\n", f->start_ea);
+				}
+
+				return true;
+
+			}
+
+			return true;
+
+		}
+		// Open XRefs Window for focused function
 		case 'X': {
 			//view xrefs to function
 			qstring word;
@@ -337,7 +369,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 				if (name_ea == BADADDR) {
 					//somehow the original name is invalid
-					msg("xref: %s has no addr\n", word.c_str());
+					//msg("xref: %s has no addr\n", word.c_str());
 					return -1;
 				}
 
@@ -347,6 +379,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			}
 			return true;
 		}
+		// Jump to address 	
 		case 'G':
 			if (ask_addr(&addr, "Jump address")) {
 				func_t* f = get_func(addr);
@@ -355,7 +388,8 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				}
 			}
 			return true;
-		case 'N': { //rename the thing under the cursor
+		// rename the thing under the cursor
+		case 'N': { 
 			Decompiled* dec = function_map[w];
 			qstring word;
 			qstring line;
@@ -421,7 +455,8 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			}
 			return true;
 		}
-		case 'Y': { //Set type for the thing under the cursor
+		//Set type for the thing under the cursor
+		case 'Y': { 
 			Decompiled* dec = function_map[w];  //the ast for the function we are editing
 			qstring word;
 			qstring line;
@@ -478,8 +513,8 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			}
 			return true;
 		}
-		// on an short US keyboard you cannot add an comment, IK_OEM_2 is the other "/"
-		case IK_DIVIDE:
+		// write a comment
+		case IK_DIVIDE:		// on an short US keyboard you cannot add an comment, IK_OEM_2 is the other "/"
 		case IK_OEM_2:
 			{ 
 
@@ -548,6 +583,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			           
 			return true;
 		}
+		// back
 		case IK_ESCAPE: {
 			map<TWidget*, qvector<ea_t> >::iterator mi = histories.find(w);
 			if (mi != histories.end()) {
@@ -568,11 +604,12 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			}
 			break;
 		}
+		// navigate to
 		case IK_RETURN: {  //jump to symbol under cursor
 			return navigate_to_word(w, false);
 		}
 		default:
-			     //msg("Detected key press: 0x%x\n", key);
+			   //  msg("Detected key press: 0x%x\n", key);
 			break;
 		}
 	}
