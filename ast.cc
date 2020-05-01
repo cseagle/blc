@@ -405,6 +405,7 @@ void LiteralExpr::print() {
 }
 
 NameExpr::NameExpr(const string& var, bool _global) : name(var), global(_global) {
+	dmsg("NameExpr::NameExpr %s\n", name);
 	adjust_thunk_name(name);
 }
 
@@ -454,7 +455,7 @@ void NameExpr::rename(const string& oldname, const string& newname) {
 void FuncNameExpr::print() {
 	dmsg("FuncNameExpr::print %s\n", name.c_str());
 	if (is_extern(name)) {
-		append_colored(COLOR_IMPNAME, name); //TODO: seems not to work properly for iOS
+		append_colored(COLOR_IMPNAME, name); 
 	}
 	else if (is_library_func(name)) {
 		append_colored(COLOR_MACRO, name);
@@ -899,7 +900,7 @@ AssignExpr::~AssignExpr() {
 }
 
 void AssignExpr::print() {
-	dmsg("AssignExpr::print %s");
+	dmsg("AssignExpr::print %s\n");
 
 	lval->do_print();
 	append(' ');
@@ -935,7 +936,7 @@ void Ternary::rename(const string& oldname, const string& newname) {
 }
 
 void Function::print() {
-	dmsg("Function::print %s\n");
+	dmsg("Function::print\n");
 
 	prototype.do_print();
 	flush();
@@ -1128,6 +1129,7 @@ static Statement* statement_handler(const Element* el) {
 		}
 		default:
 			dmsg("no tag_map match for %s in statement, trying expression\n", child->getName().c_str());
+			
 			lhs = expr_handler(it, end);
 			break;
 		}
@@ -1367,11 +1369,15 @@ static Expression* expr_handler(List::const_iterator& it, List::const_iterator& 
 	for (; it < end; it++) {
 		const Element* child = get_child(it);
 		if (is_funcname_color(child)) {
-			dmsg("expr_handler op building CallExpr(1)\n");
-			CallExpr* call = new CallExpr(new FuncNameExpr(child->getContent()), expr_handler(++it, end));
+			dmsg("expr_handler op building CallExpr(%s)\n", child->getContent());
 
+			FuncNameExpr* fne = new FuncNameExpr(child->getContent());
+			CallExpr* call = new CallExpr(fne, expr_handler(++it, end));
+
+			dmsg("expr_handler fne name %s\n", fne->name);
 			dmsg("expr_handler op built CallExpr - %s\n", debug_print(call));
 			dmsg("expr_handler out(3) %d\n", --ecount);
+
 			return call;
 		}
 		switch (tag_map[child->getName()]) {

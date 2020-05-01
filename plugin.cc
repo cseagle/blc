@@ -1356,17 +1356,30 @@ bool simplify_deref(const string& name, string& new_name) {
 }
 
 void adjust_thunk_name(string& name) {
+	
 	ea_t ea = get_name_ea(BADADDR, name.c_str());
+
+	dmsg("adjust_thunk_name(%s)\n", name.c_str());
+	
 	if (is_function_start(ea)) {
+
 		func_t* f = get_func(ea);
 		ea_t fun = calc_thunk_func_target(f, &ea);
+
 		if (fun != BADADDR) {
+			
 			qstring tname;
-			if (get_name(&tname, fun)) {
+			
+			//this seems to return success even on failure, e.g. in the debugger
+			get_name(&tname, fun);
+
+			if (tname.c_str()) {
+				dmsg("	adjust_thunk_name: setting new name \"%s\"\n", tname.c_str());
 				name = tname.c_str();
 			}
 		}
 	}
+
 }
 
 //TODO think about sign extension for values smaller than 8 bytes
