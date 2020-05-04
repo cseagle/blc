@@ -1257,7 +1257,7 @@ bool is_external_ref(uint64_t ea, uint64_t* fptr) {
 		if (fptr) {
 			*fptr = got;
 		}
-		msg("0x%zx is external, with got entry at 0x%zx\n", ea, (size_t)got);
+		dmsg("0x%zx is external, with got entry at 0x%zx\n", ea, (size_t)got);
 	}
 	return res;
 }
@@ -1387,7 +1387,7 @@ void adjust_thunk_name(string& name) {
 			string stname = tname.c_str();
 
 			if (!stname.empty()) {
-				msg("	adjust_thunk_name: setting new name \"%s\"\n", tname.c_str());
+				dmsg("	adjust_thunk_name: setting new name \"%s\"\n", tname.c_str());
 				name = tname.c_str();
 			}
 		}
