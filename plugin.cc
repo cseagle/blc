@@ -1384,8 +1384,10 @@ void adjust_thunk_name(string& name) {
 			//this seems to return success even on failure, e.g. in the debugger
 			get_name(&tname, fun);
 
-			if (tname.c_str()) {
-				dmsg("	adjust_thunk_name: setting new name \"%s\"\n", tname.c_str());
+			string stname = tname.c_str();
+
+			if (!stname.empty()) {
+				msg("	adjust_thunk_name: setting new name \"%s\"\n", tname.c_str());
 				name = tname.c_str();
 			}
 		}
