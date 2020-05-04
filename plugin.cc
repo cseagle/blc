@@ -81,6 +81,9 @@
 
 //#define DEBUG_PLUGIN 1
 
+// Enable reload
+//#define DEVFUNC 1
+
 #ifdef DEBUG_PLUGIN
 #define dmsg(x, ...) msg(x, __VA_ARGS__)
 #else
@@ -338,8 +341,9 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 		switch (key) {
 
+#if DEVFUNC
 			//Refresh decompile
-		/*case 0x52: { //R - If I define it as R it won't work for some reason...
+		case 0x52: { //R - If I define it as R it won't work for some reason...
 
 			Decompiled* dec = function_map[w];
 
@@ -349,8 +353,6 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 				msg("Re-Decompiled function at 0x%x.\n", f->start_ea);
 
-				blc_init(); // we need to hard reset things to get the symboltab reloaded, dirty solution but best I came up with atm
-
 				decompile_at(f->start_ea, w);
 
 				refresh_widget(w);
@@ -358,7 +360,8 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 			return true;
 
-		}*/
+		}
+#endif
 			// Open XRefs Window for focused function
 		case 'X': {
 			//view xrefs to function
@@ -1031,6 +1034,14 @@ void decompile_at(ea_t addr, TWidget* w) {
 	func_t* func = get_func(addr);
 	Function* ast = NULL;
 	if (func) {
+
+		// We need to hard reset things to get the symboltab reloaded
+		// dirty solution but best I came up with atm.
+		// If we not refresh ist teh decompiler output will be broken in
+		// certain situations, i.e. if something was changed outside the
+		// decompiler window
+		blc_init(); 
+		
 		int res = do_decompile(func->start_ea, func->end_ea, &ast);
 		if (ast) {
 			// msg("got a Functon tree!\n");
