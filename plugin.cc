@@ -80,7 +80,7 @@
 #endif
 
 //debug flags
-#define DEBUG_PLUGIN 1
+//#define DEBUG_PLUGIN 1
 //#define DEVFUNC 1
 
 #ifdef DEBUG_PLUGIN
