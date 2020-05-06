@@ -79,9 +79,8 @@
 #define DIRSEP "/"
 #endif
 
+//debug flags
 //#define DEBUG_PLUGIN 1
-
-// Enable reload
 //#define DEVFUNC 1
 
 #ifdef DEBUG_PLUGIN
@@ -185,9 +184,10 @@ static bool get_current_word(TWidget* v, bool mouse, qstring& word, qstring* lin
 		return false;
 	}
 	char* ptr = line->begin() + x;
+	
 	char* end = ptr;
 	// find the end of the word
-	while ((qisalnum(*end) || *end == '_' || *end == ':') && *end != '\0') { // added : as part of the words for std:: etc. names
+	while ((qisalnum(*end) || *end == '_' || (*end == ':' && (*end+1) == ':')) && *end != '\0') { // added :: as part of the words for std:: etc. names
 		end++;
 	}
 
@@ -333,8 +333,6 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 	ea_t addr = 0;
 
-	//msg("Detected key press: 0x%x\n", key);
-
 	if (shift == 0) {
 
 		strvec_t* sv = (strvec_t*)ud;
@@ -362,7 +360,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 
 		}
 #endif
-			// Open XRefs Window for focused function
+				 // Open XRefs Window for focused function
 		case 'X': {
 			//view xrefs to function
 			qstring word;
@@ -404,11 +402,11 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			if (get_current_word(w, false, word, &line)) {
 				string sword(word.c_str());
 				dmsg("Try to rename: %s\n", word.c_str());
-				if (!is_reserved(sword)) { //can't rename to a reserved word
+				if (!is_reserved(sword)) { // can't rename a reserved word
 					qstring new_name(word);
 					map<string, LocalVar*>::iterator mi = dec->locals.find(sword);
 					if (mi != dec->locals.end()) {
-						//                     msg("%s is a local\n", word.c_str());
+						dmsg("%s is a local\n", word.c_str());
 						LocalVar* lv = mi->second;
 						if (ask_str(&word, HIST_IDENT, "Please enter item name") && sword != word.c_str()) {
 							string newname(word.c_str());
@@ -419,7 +417,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 								return true;
 							}
 							if (lv->offset != BADADDR) { //stack var
-	//                           msg("renaming a stack var %s to %s\n", sword.c_str(), word.c_str());
+								dmsg("renaming a stack var %s to %s\n", sword.c_str(), word.c_str());
 								if (set_member_name(get_frame(dec->ida_func), lv->offset, word.c_str())) {
 									lv->current_name = newname;
 									dec->locals.erase(sword);
@@ -434,7 +432,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 							else { //not stack var, reg var??
 								qstring iname;
 								netnode nn(dec->ida_func->start_ea);
-								//                           msg("renaming a reg var %s to %s\n", sword.c_str(), word.c_str());
+								dmsg("renaming a reg var %s to %s\n", sword.c_str(), word.c_str());
 								lv->current_name = newname;
 								dec->locals.erase(sword);
 								dec->locals[word.c_str()] = lv;
@@ -444,21 +442,40 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 							}
 						}
 					}
-					else if (do_ida_rename(new_name, dec->ida_func->start_ea) == 2) {
-						//renming a global
-						string snew_name(new_name.c_str());
-						dec->ast->rename(sword, snew_name);
-						dmsg("rename: %s -> %s\n", word.c_str(), new_name.c_str());
-						refresh = true;
+					else {
+						// has an own ask dialog
+						int res = do_ida_rename(new_name, dec->ida_func->start_ea);
+
+						if (res == 2) {
+							//renming a global
+							string snew_name(new_name.c_str());
+							dec->ast->rename(sword, snew_name);
+							dmsg("rename: %s -> %s\n", word.c_str(), new_name.c_str());
+							refresh = true;
+						}
+						else {
+							dmsg("rename: bad return code, res = %i\n", res);
+						}
+
+
 					}
+				}
+				
+				else {
+				
 				}
 			}
 			if (refresh) {
 
-				blc_init(); // need to refresh symboltab in the lower layer or we will have broken links after navigating - dirty solution 
-							// TODO: find something better
+				Decompiled* dec = function_map[w];
+
+				func_t* f = dec->ida_func;
+
+				decompile_at(f->start_ea, w);
 
 				refresh_widget(w);
+
+				dmsg("Refresh done\n");
 
 			}
 			return true;
@@ -520,7 +537,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 #endif
 			}
 			return true;
-			}
+		}
 				// write a comment
 		case IK_DIVIDE:		// on an short US keyboard you cannot add an comment, IK_OEM_2 is the other "/"
 		case IK_OEM_2:
@@ -620,9 +637,9 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 			dmsg("Detected key press: 0x%x\n", key);
 			break;
 		}
-		}
-	return false;
 	}
+	return false;
+}
 
 
 
@@ -686,7 +703,7 @@ int do_ida_rename(qstring& name, ea_t func) {
 	ea_t name_ea = get_name_ea(func, name.c_str());
 	if (name_ea == BADADDR) {
 		//somehow the original name is invalid
-  //      msg("rename: %s has no addr\n", name.c_str());
+		dmsg("rename: %s has no addr\n", name.c_str());
 		return -1;
 	}
 	qstring orig = name;
@@ -695,7 +712,7 @@ int do_ida_rename(qstring& name, ea_t func) {
 		ea_t new_name_ea = get_name_ea(func, name.c_str());
 		if (new_name_ea != BADADDR) {
 			//new name is same as existing name
-            msg("rename: new name already in use\n", name.c_str());
+			msg("rename: new name already in use\n", name.c_str());
 			return 0;
 		}
 		//      msg("Custom rename: %s at adddress 0x%zx\n", name.c_str(), name_ea);
@@ -926,7 +943,7 @@ bool get_sleigh_id(string& sleigh) {
 	default:
 		return false;
 	}
-	
+
 	return true;
 }
 
@@ -1040,8 +1057,8 @@ void decompile_at(ea_t addr, TWidget* w) {
 		// If we not refresh ist teh decompiler output will be broken in
 		// certain situations, i.e. if something was changed outside the
 		// decompiler window
-		blc_init(); 
-		
+		blc_init();
+
 		int res = do_decompile(func->start_ea, func->end_ea, &ast);
 		if (ast) {
 			// msg("got a Functon tree!\n");
@@ -1367,20 +1384,20 @@ bool simplify_deref(const string& name, string& new_name) {
 }
 
 void adjust_thunk_name(string& name) {
-	
+
 	ea_t ea = get_name_ea(BADADDR, name.c_str());
 
 	dmsg("adjust_thunk_name(%s)\n", name.c_str());
-	
+
 	if (is_function_start(ea)) {
 
 		func_t* f = get_func(ea);
 		ea_t fun = calc_thunk_func_target(f, &ea);
 
 		if (fun != BADADDR) {
-			
+
 			qstring tname;
-			
+
 			//this seems to return success even on failure, e.g. in the debugger
 			get_name(&tname, fun);
 
