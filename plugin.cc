@@ -80,7 +80,7 @@
 #endif
 
 //debug flags
-//#define DEBUG_PLUGIN 1
+#define DEBUG_PLUGIN 1
 //#define DEVFUNC 1
 
 #ifdef DEBUG_PLUGIN
@@ -176,22 +176,36 @@ static bool get_current_word(TWidget* v, bool mouse, qstring& word, qstring* lin
 	// query the cursor position
 	int x, y;
 	if (get_custom_viewer_place(v, mouse, &x, &y) == NULL) {
+		dmsg("get_current_word: !get_custom_viewer_place()\n");
 		return false;
 	}
 	// query the line at the cursor
 	tag_remove(line, get_custom_viewer_curline(v, mouse));
 	if (x >= line->length()) {
+		dmsg("get_current_word: x >= line->length()\n");
 		return false;
 	}
 	char* ptr = line->begin() + x;
 	
 	char* end = ptr;
+	char* next = ptr;
+	char* last = ptr;
+
 	// find the end of the word
-	while ((qisalnum(*end) || *end == '_' || (*end == ':' && (*end+1) == ':')) && *end != '\0') { // added :: as part of the words for std:: etc. names
+	while (
+			(qisalnum(*end) || *end == '_' || 
+			(*end == ':' && (
+				(*next) == ':') || ((*last) == ':')
+			)
+		) // added :: as part of the words for std:: etc. names
+		&& *end != '\0') { 
+		last = end;
 		end++;
+		next = end + 1;
 	}
 
 	if (end == ptr) {
+		dmsg("get_current_word: end == ptr\n");
 		return false;
 	}
 
@@ -200,10 +214,13 @@ static bool get_current_word(TWidget* v, bool mouse, qstring& word, qstring* lin
 		ptr--;
 	}
 	if (!qisalpha(*ptr) && *ptr != '_') {
-		//starts with a digit or something else
-		return false;
+		dmsg("get_current_word: starts with a digit or something else\n");
+	//	return false;
 	}
 	word = qstring(ptr, end - ptr);
+	
+	dmsg("get_current_word: %s\n", word.c_str());
+
 	return true;
 }
 
