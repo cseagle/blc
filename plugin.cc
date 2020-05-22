@@ -669,7 +669,12 @@ bool get_sleigh_id(string &sleigh) {
       case PLFM_386:
          //options include "System Management Mode" "Real Mode" "Protected Mode" "default"
          sleigh += is_64 ? ":64" : (inf_is_32bit() ? ":32" : ":16");
-         sleigh += ":default";
+         if (sleigh.find(":16") != string::npos) {
+            sleigh += ":Real Mode";
+         }
+         else {
+            sleigh += ":default";
+         }
 
          if (cc.id == COMP_BC) {
             sleigh += ":borlandcpp";
