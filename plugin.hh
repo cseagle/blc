@@ -106,5 +106,8 @@ bool get_value(uint64_t addr, uint64_t *val);
 
 bool get_string(uint64_t addr, string &str);
 
+bool ghidra_init(void);
+void ghidra_term(void);
+
 #endif
 

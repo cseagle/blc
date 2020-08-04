@@ -246,6 +246,9 @@
     <ClCompile Include="transform.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="stringmanage.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="action.hh">

@@ -85,7 +85,7 @@ SRCS=action.cc address.cc architecture.cc ast.cc \
 	printc.cc printjava.cc printlanguage.cc rangeutil.cc \
 	ruleaction.cc run.cc semantics.cc sleigh.cc \
 	sleigh_arch.cc sleighbase.cc slghpatexpress.cc \
-	slghpattern.cc slghsymbol.cc space.cc subflow.cc \
+	slghpattern.cc slghsymbol.cc space.cc stringmanage.cc subflow.cc \
 	transform.cc translate.cc type.cc typeop.cc userop.cc \
 	variable.cc varmap.cc varnode.cc xml.tab.cc
 

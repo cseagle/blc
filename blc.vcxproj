@@ -281,6 +281,7 @@
     <ClCompile Include="slghpattern.cc" />
     <ClCompile Include="slghsymbol.cc" />
     <ClCompile Include="space.cc" />
+    <ClCompile Include="stringmanage.cc" />
     <ClCompile Include="subflow.cc" />
     <ClCompile Include="transform.cc" />
     <ClCompile Include="translate.cc" />

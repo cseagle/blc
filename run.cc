@@ -171,12 +171,7 @@ void mips_setup(uint64_t start, uint64_t end) {
    add_tracked_reg(regs, 0xc8, start >> 32, 4);
 }
 
-int idaapi blc_init(void) {
-   //init_query_handlers();
-
-   //do ida related init
-   init_ida_ghidra();
-
+bool ghidra_init(void) {
    startDecompilerLibrary(ghidra_dir.c_str());
 
    err_stream = new stringstream();
@@ -216,17 +211,17 @@ int idaapi blc_init(void) {
       msg("Could not create architecture\n");
       delete arch;
       arch = NULL;
-      return PLUGIN_SKIP;
+      return false;
    }
 
    check_err_stream();
 
    msg("Ghidra architecture successfully created\n");
 
-   return PLUGIN_KEEP;
+   return true;
 }
 
-void idaapi blc_term(void) {
+void ghidra_term(void) {
    shutdownDecompilerLibrary();
 
 //   GhidraCapability::shutDown();

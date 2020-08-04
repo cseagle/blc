@@ -87,7 +87,7 @@ struct Decompiled {
 
    Decompiled(Function *f, func_t *func) : ast(f), ida_func(func), sv(NULL) {};
    ~Decompiled();
-   
+
    void set_ud(strvec_t *ud);
    strvec_t *get_ud() {return sv;};
 };
@@ -345,7 +345,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                   //global variable, or function parameter, also change the type in IDA.
                   //If the type is for a register variable, then update the variable's type in a
                   //netnode (like the variable name map)
-                  
+
                   //use parse_decl to parse user text into a type
                   //then will need to extract IDA's tinfo_t information back to an updated ast Type node
                }
@@ -413,10 +413,6 @@ string ghidra_dir;
 map<int,string> proc_map;
 
 map<int,string> return_reg_map;
-
-int idaapi blc_init(void);
-
-void idaapi blc_term(void);
 
 static const char *name_dialog;
 
@@ -573,12 +569,16 @@ filetype_t inf_get_filetype() {
 #endif
 
 int get_proc_id() {
+#if IDA_SDK_VERSION < 750
    return ph.id;
+#else
+   return PH.id;
+#endif
 }
 
 bool get_sleigh_id(string &sleigh) {
    sleigh.clear();
-   map<int,string>::iterator proc = proc_map.find(ph.id);
+   map<int,string>::iterator proc = proc_map.find(get_proc_id());
    if (proc == proc_map.end()) {
       return false;
    }
@@ -590,7 +590,7 @@ bool get_sleigh_id(string &sleigh) {
 
    sleigh = proc->second + (is_be ? ":BE" : ":LE");
 
-   switch (ph.id) {
+   switch (get_proc_id()) {
       case PLFM_6502:
          sleigh += ":16:default";
          break;
@@ -856,11 +856,68 @@ const char *tag_remove(const char *tagged) {
    return ll.c_str();
 }
 
+#if IDA_SDK_VERSION >= 750
+
+struct blc_plugmod_t : public plugmod_t {
+  /// Invoke the plugin.
+  virtual bool idaapi run(size_t arg);
+
+  /// Virtual destructor.
+  virtual ~blc_plugmod_t();
+};
+
+plugmod_t *idaapi blc_init(void) {
+   //do ida related init
+   init_ida_ghidra();
+
+   if (ghidra_init()) {
+      return new blc_plugmod_t();
+   }
+   else {
+      return NULL;
+   }
+}
+
+blc_plugmod_t::~blc_plugmod_t(void) {
+   ghidra_term();
+}
+
+bool idaapi blc_plugmod_t::run(size_t /*arg*/) {
+   ea_t addr = get_screen_ea();
+   decompile_at(addr);
+   return true;
+}
+
+#define blc_run NULL
+#define blc_term NULL
+
+#else
+
+//make life easier in a post 7.5 world
+#define PLUGIN_MULTI 0
+
+int idaapi blc_init(void) {
+   //do ida related init
+   init_ida_ghidra();
+
+   if (ghidra_init()) {
+      return PLUGIN_KEEP;
+   }
+   else {
+      return PLUGIN_SKIP;
+   }
+}
+
+void idaapi blc_term(void) {
+   ghidra_term();
+}
+
 bool idaapi blc_run(size_t /*arg*/) {
    ea_t addr = get_screen_ea();
    decompile_at(addr);
    return true;
 }
+#endif
 
 int64_t get_name(string &name, uint64_t ea, int flags) {
    qstring ida_name;
@@ -1047,7 +1104,12 @@ bool is_read_only(uint64_t ea) {
 bool simplify_deref(const string &name, string &new_name) {
    uint64_t tgt;
    ea_t addr = get_name_ea(BADADDR, name.c_str());
-   if (addr != BADADDR && is_read_only(addr) && is_pointer_var(addr, (uint32_t)ph.max_ptr_size(), &tgt)) {
+#if IDA_SDK_VERSION < 750
+   uint32_t max_ptr_size = (uint32_t)ph.max_ptr_size();
+#else
+   uint32_t max_ptr_size = (uint32_t)PH.max_ptr_size();
+#endif
+   if (addr != BADADDR && is_read_only(addr) && is_pointer_var(addr, max_ptr_size, &tgt)) {
       if (get_name(new_name, tgt, 0)) {
 //         msg("could simplify *%s to %s\n", name.c_str(), new_name.c_str());
          return true;
@@ -1123,7 +1185,7 @@ char wanted_hotkey[] = "Alt-F3";
 plugin_t PLUGIN =
 {
   IDP_INTERFACE_VERSION,
-  0,                    // plugin flags
+  PLUGIN_MULTI,      // plugin flags
   blc_init,          // initialize
   blc_term,          // terminate. this pointer may be NULL.
   blc_run,           // invoke plugin
