@@ -495,7 +495,7 @@ int4 convertCharRef(const string &ref)
   return val;
 }
 
-static int yylex(void)
+int yylex(void)
 
 {
   int res = global_scan->nexttoken();
