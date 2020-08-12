@@ -117,9 +117,9 @@ in the source view corresponds to a symbol in the Ida disassembly, the symbol wi
 also be renamed in the disassembly.
 
 You can get xrefs of a functions by marking it and pressing `X`. To write a comment, 
-mark the line and press `/`. If you have the hex-rays decompiler installed, some keys 
-might conflict and need to be changed for hex-rays. A feature to freely select the 
-hotkey values is planned. 
+mark the line and press `/` (or `C`). If you have the hex-rays decompiler installed, 
+some keys might conflict and need to be changed for hex-rays. A feature to freely 
+select the hotkey values is planned. 
 
 ## POTENTIAL FUTURE WORK
 

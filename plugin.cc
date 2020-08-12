@@ -558,6 +558,7 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 				// write a comment
 		case IK_DIVIDE:		// on an short US keyboard you cannot add an comment, IK_OEM_2 is the other "/"
 		case IK_OEM_2:
+		case 'C':			// alternate comment key
 		{
 
 			//Add eol comment on current line
@@ -1688,12 +1689,20 @@ bool is_string(const string& name) {
 	return false;
 }
 
+void print_blc_banner() {
+	if (sleigh_id.c_str())
+		msg("Ghidra Decompiler (blc) - CPU not supported!\n");
+	else {
+		msg("Ghidra Decompiler (blc) ready.\nUsing sleigh id: %s\n", sleigh_id.c_str());
+	}
+}
+
 #if IDA_SDK_VERSION >= 750	
 plugmod_t* idaapi blc_init_new(void) {
 
 	plugmod_t* res = blc_init();
-
-	msg("Ghidra Decompiler (blc) ready.\nUsing sleigh id: %s\n", sleigh_id.c_str());
+	
+	print_blc_banner();
 
 	return res;
 }
@@ -1702,7 +1711,7 @@ size_t idaapi blc_init_new(void) {
 
 	size_t res = blc_init();
 
-	msg("Ghidra Decompiler (blc) ready.\nUsing sleigh id: %s\n", sleigh_id.c_str());
+	print_blc_banner();
 
 	return res;
 }
@@ -1710,7 +1719,7 @@ size_t idaapi blc_init_new(void) {
 int idaapi blc_init_new(void) {
 	int res = blc_init();
 
-	msg("Ghidra Decompiler (blc) ready.\nUsing sleigh id: %s\n", sleigh_id.c_str());
+	print_blc_banner();
 
 	return res;
 }
