@@ -1158,7 +1158,7 @@ void decompile_at(ea_t addr, TWidget* w) {
 			// TODO: Improve tab titles
 			string title = get_available_title();
 
-			fmt.sprnt("Ghidra Code - %s", title.c_str());   // make the suffix change with more windows
+			fmt.sprnt("Ghidra Code-%s", title.c_str());   // make the suffix change with more windows
 
 			simpleline_place_t s1;
 			simpleline_place_t s2((int)(sv->size() - 1));
