@@ -685,15 +685,16 @@ map<int, string> return_reg_map;
 int blc_init_old(void);
 
 static const char *name_dialog;
-#if IDA_SDK_VERSION > 740	
+
+#if IDA_SDK_VERSION >= 750	
+plugmod_t* idaapi blc_init_new(void);
+#elif IDA_SDK_VERSION > 740	
 size_t idaapi blc_init_new(void);
 #else
 int idaapi blc_init_new(void);
 #endif
 
 void idaapi blc_term(void);
-
-static const char* name_dialog;
 
 //get the format string for IDA's standard rename dialog
 void find_ida_name_dialog() {
@@ -1084,15 +1085,15 @@ void decompile_at(ea_t addr, TWidget* w) {
 		// If we not refresh ist teh decompiler output will be broken in
 		// certain situations, i.e. if something was changed outside the
 		// decompiler window
-		blc_init();
+		ghidra_init();
 
 		int res = do_decompile(func->start_ea, func->end_ea, &ast);
 		if (ast) {
-			// msg("got a Functon tree!\n");
+			dmsg("got a Functon tree!\n");
 			Decompiled* dec = new Decompiled(ast, func);
 
 			// now try to map ghidra stack variable names to ida stack variable names
-			// msg("mapping ida names to ghidra names\n");
+			dmsg("mapping ida names to ghidra names\n");
 			map_ghidra_to_ida(dec);
 
 			vector<string> code;
@@ -1157,7 +1158,7 @@ void decompile_at(ea_t addr, TWidget* w) {
 			// TODO: Improve tab titles
 			string title = get_available_title();
 
-			fmt.sprnt("Ghidra code  - %s", title.c_str());   // make the suffix change with more windows
+			fmt.sprnt("Ghidra Code - %s", title.c_str());   // make the suffix change with more windows
 
 			simpleline_place_t s1;
 			simpleline_place_t s2((int)(sv->size() - 1));
@@ -1687,8 +1688,16 @@ bool is_string(const string& name) {
 	return false;
 }
 
+#if IDA_SDK_VERSION >= 750	
+plugmod_t* idaapi blc_init_new(void) {
 
-#if IDA_SDK_VERSION > 740	
+	plugmod_t* res = blc_init();
+
+	msg("Ghidra Decompiler (blc) ready.\nUsing sleigh id: %s\n", sleigh_id.c_str());
+
+	return res;
+}
+#elif IDA_SDK_VERSION >= 740	
 size_t idaapi blc_init_new(void) {
 
 	size_t res = blc_init();
@@ -1720,7 +1729,7 @@ plugin_t PLUGIN =
 {
   IDP_INTERFACE_VERSION,
   PLUGIN_MULTI,      // plugin flags
-  blc_init,          // initialize
+  blc_init_new,          // initialize
   blc_term,          // terminate. this pointer may be NULL.
   blc_run,           // invoke plugin
   comment,              // long comment about the plugin
