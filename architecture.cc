@@ -16,6 +16,7 @@
 // Set up decompiler for specific architectures
 
 #include "coreaction.hh"
+#include "flow.hh"
 #ifdef CPUI_RULECOMPILE
 #include "rulecompile.hh"
 #endif
@@ -25,8 +26,8 @@
 
 vector<ArchitectureCapability *> ArchitectureCapability::thelist;
 
-const uint4 ArchitectureCapability::majorversion = 3;
-const uint4 ArchitectureCapability::minorversion = 5;
+const uint4 ArchitectureCapability::majorversion = 4;
+const uint4 ArchitectureCapability::minorversion = 0;
 
 /// This builds a list of just the ArchitectureCapability extensions
 void ArchitectureCapability::initialize(void)
@@ -86,17 +87,10 @@ Architecture::Architecture(void)
 
 {
   //  endian = -1;
-  trim_recurse_max = 5;		// Reasonable default value
-  max_implied_ref = 2;		// 2 is best, in specific cases a higher number might be good
-  max_term_duplication = 2;	// 2 and 3 (4) are pretty reasonable
-  max_basetype_size = 10;	// Needs to be 8 or bigger
+  resetDefaultsInternal();
   min_funcsymbol_size = 1;
   aggressive_ext_trim = false;
-  readonlypropagate = false;
-  infer_pointers = true;
-  pointer_lowerbound = 0x1000;
   funcptr_align = 0;
-  flowoptions = 0;
   defaultfp = (ProtoModel *)0;
   defaultReturnAddr.space = (AddrSpace *)0;
   evalfp_current = (ProtoModel *)0;
@@ -106,6 +100,7 @@ Architecture::Architecture(void)
   loader = (LoadImage *)0;
   pcodeinjectlib = (PcodeInjectLibrary *)0;
   commentdb = (CommentDatabase *)0;
+  stringManager = (StringManager *)0;
   cpool = (ConstantPool *)0;
   symboltab = new Database(this);
   context = (ContextDatabase *)0;
@@ -158,6 +153,8 @@ Architecture::~Architecture(void)
     delete pcodeinjectlib;
   if (commentdb != (CommentDatabase *)0)
     delete commentdb;
+  if (stringManager != (StringManager *)0)
+    delete stringManager;
   if (cpool != (ConstantPool *)0)
     delete cpool;
   if (context != (ContextDatabase *)0)
@@ -274,20 +271,23 @@ void Architecture::clearAnalysis(Funcdata *fd)
   fd->clear();			// Clear stuff internal to function
   // Clear out any analysis generated comments
   commentdb->clearType(fd->getAddress(),Comment::warning|Comment::warningheader);
+  stringManager->clear();
 }
 
 /// Symbols do not necessarily need to be available for the decompiler.
 /// This routine loads all the \e load \e image knows about into the symbol table
-void Architecture::readLoaderSymbols(void)
+/// \param delim is the delimiter separating namespaces from symbol base names
+void Architecture::readLoaderSymbols(const string &delim)
 
 {
   if (loadersymbols_parsed) return; // already read
-  Scope *scope = symboltab->getGlobalScope();
   loader->openSymbols();
   loadersymbols_parsed = true;
   LoadImageFunc record;
   while(loader->getNextSymbol(record)) {
-    scope->addFunction(record.address,record.name);
+    string basename;
+    Scope *scope = symboltab->findCreateScopeFromSymbolName(record.name, delim, basename, (Scope *)0);
+    scope->addFunction(record.address,basename);
   }
   loader->closeSymbols();
 }
@@ -306,21 +306,19 @@ void Architecture::collectBehaviors(vector<OpBehavior *> &behave) const
   }
 }
 
-/// A \b near pointer is some form of truncated pointer that needs
-/// \e segment or other information to fully form an address.
 /// This method searches for a user-defined segment op registered
-/// for the space
+/// for the given space.
 /// \param spc is the address space to check
-/// \return true if the space supports a segment operation
-bool Architecture::hasNearPointers(AddrSpace *spc) const
+/// \return the SegmentOp object or null
+SegmentOp *Architecture::getSegmentOp(AddrSpace *spc) const
 
 {
-  if (spc->getIndex() >= userops.numSegmentOps()) return false;
+  if (spc->getIndex() >= userops.numSegmentOps()) return (SegmentOp *)0;
   SegmentOp *segdef = userops.getSegmentOp(spc->getIndex());
-  if (segdef == (SegmentOp *)0) return false;
+  if (segdef == (SegmentOp *)0) return (SegmentOp *)0;
   if (segdef->getResolve().space != (AddrSpace *)0)
-    return true;
-  return false;
+    return segdef;
+  return (SegmentOp *)0;
 }
 
 /// Establish details of the prototype for a given function symbol
@@ -328,9 +326,13 @@ bool Architecture::hasNearPointers(AddrSpace *spc) const
 void Architecture::setPrototype(const PrototypePieces &pieces)
 
 {
-  Funcdata *fd = symboltab->getGlobalScope()->queryFunction( pieces.name );
+  string basename;
+  Scope *scope = symboltab->resolveScopeFromSymbolName(pieces.name, "::", basename, (Scope *)0);
+  if (scope == (Scope *)0)
+    throw ParseError("Unknown namespace: " + pieces.name);
+  Funcdata *fd = scope->queryFunction( basename );
   if (fd == (Funcdata *)0)
-    throw ParseError("Unknown function name: "+pieces.name);
+    throw ParseError("Unknown function name: " + pieces.name);
 
   fd->getFuncProto().setPieces(pieces);
 }
@@ -413,6 +415,7 @@ void Architecture::saveXml(ostream &s) const
   symboltab->saveXml(s);
   context->saveXml(s);
   commentdb->saveXml(s);
+  stringManager->saveXml(s);
   if (!cpool->empty())
     cpool->saveXml(s);
   s << "</save_state>\n";
@@ -445,6 +448,8 @@ void Architecture::restoreXml(DocumentStorage &store)
       context->restoreXml(subel,this);
     else if (subel->getName() == "commentdb")
       commentdb->restoreXml(subel,this);
+    else if (subel->getName() == "stringmanage")
+      stringManager->restoreXml(subel,this);
     else if (subel->getName() == "constantpool")
       cpool->restoreXml(subel,*types);
     else if (subel->getName() == "optionslist")
@@ -510,8 +515,8 @@ void Architecture::buildAction(DocumentStorage &store)
 
 {
   parseExtraRules(store);	// Look for any additional rules
-  universal_action(this);
-  allacts.setCurrent("decompile");
+  allacts.universalAction(this);
+  allacts.resetDefaults();
 }
 
 /// This builds the database which holds the status registers setings and other
@@ -583,6 +588,14 @@ void Architecture::buildCommentDB(DocumentStorage &store)
   commentdb = new CommentDatabaseInternal();
 }
 
+/// Build container that holds decoded strings
+/// \param store may hold configuration information
+void Architecture::buildStringManager(DocumentStorage &store)
+
+{
+  stringManager = new StringManagerUnicode(this,2048);
+}
+
 /// Some processor models (Java byte-code) need a database of constants.
 /// The database is always built, but may remain empty.
 /// \param store may hold configuration information
@@ -601,6 +614,12 @@ void Architecture::buildInstructions(DocumentStorage &store)
   TypeOp::registerInstructions(inst,types,translate);
 }
 
+void Architecture::postSpecFile(void)
+
+{
+  cacheAddrSpaceProperties();
+}
+
 /// Once the processor is known, the Translate object can be built and
 /// fully initialized. Processor and compiler specific configuration is performed
 /// \param store will hold parsed configuration information
@@ -615,8 +634,6 @@ void Architecture::restoreFromSpec(DocumentStorage &store)
   insertSpace( new FspecSpace(this,translate,"fspec",numSpaces()));
   insertSpace( new IopSpace(this,translate,"iop",numSpaces()));
   insertSpace( new JoinSpace(this,translate,"join",numSpaces()));
-  if (translate->getDefaultSize() < 3) // For small architectures
-    pointer_lowerbound = 0x100;	// assume constants are pointers starting at a much lower bound
   userops.initialize(this);
   if (translate->getAlignment() <= 8)
     min_funcsymbol_size = translate->getAlignment();
@@ -639,6 +656,49 @@ void Architecture::initializeSegments(void)
     if (sop == (SegmentOp *)0) continue;
     SegmentedResolver *rsolv = new SegmentedResolver(this,sop->getSpace(),sop);
     insertResolver(sop->getSpace(),rsolv);
+  }
+}
+
+/// Determine the minimum pointer size for the space and whether or not there are near pointers.
+/// Set up an ordered list of inferable spaces (where constant pointers can be infered).
+/// Inferable spaces include the default space and anything explicitly listed
+/// in the cspec \<global> tag that is not a register space. An initial list of potential spaces is
+/// passed in that needs to be ordered, filtered, and deduplicated.
+void Architecture::cacheAddrSpaceProperties(void)
+
+{
+  vector<AddrSpace *> copyList = inferPtrSpaces;
+  copyList.push_back(getDefaultCodeSpace());	// Make sure the default code space is present
+  copyList.push_back(getDefaultDataSpace());	// Make sure the default data space is present
+  inferPtrSpaces.clear();
+  sort(copyList.begin(),copyList.end(),AddrSpace::compareByIndex);
+  AddrSpace *lastSpace = (AddrSpace *)0;
+  for(int4 i=0;i<copyList.size();++i) {
+    AddrSpace *spc = copyList[i];
+    if (spc == lastSpace) continue;
+    lastSpace = spc;
+    if (spc->getDelay() == 0) continue;		// Don't put in a register space
+    if (spc->getType() == IPTR_SPACEBASE) continue;
+    if (spc->isOtherSpace()) continue;
+    if (spc->isOverlay()) continue;
+    inferPtrSpaces.push_back(spc);
+  }
+
+  int4 defPos = -1;
+  for(int4 i=0;i<inferPtrSpaces.size();++i) {
+    AddrSpace *spc = inferPtrSpaces[i];
+    if (spc == getDefaultDataSpace())		// Make the default for inferring pointers the data space
+      defPos = i;
+    SegmentOp *segOp = getSegmentOp(spc);
+    if (segOp != (SegmentOp *)0) {
+      int4 val = segOp->getInnerSize();
+      markNearPointers(spc, val);
+    }
+  }
+  if (defPos > 0) {		// Make sure the default space comes first
+    AddrSpace *tmp = inferPtrSpaces[0];
+    inferPtrSpaces[0] = inferPtrSpaces[defPos];
+    inferPtrSpaces[defPos] = tmp;
   }
 }
 
@@ -749,7 +809,9 @@ void Architecture::parseGlobal(const Element *el)
   for(iter=list.begin();iter!=list.end();++iter) {
     Range range;
     range.restoreXml(*iter,this);
-    symboltab->addRange(scope,range.getSpace(),range.getFirst(),range.getLast());
+    AddrSpace *spc = range.getSpace();
+    inferPtrSpaces.push_back(spc);
+    symboltab->addRange(scope,spc,range.getFirst(),range.getLast());
     if (range.getSpace()->isOverlayBase()) { // If the address space is overlayed
       // We need to duplicate the range being marked as global into the overlay space(s)
       int4 num = numSpaces();
@@ -1040,6 +1102,13 @@ void Architecture::parseProcessorConfig(DocumentStorage &store)
     else if (elname == "register_data") {
       parseLaneSizes(*iter);
     }
+    else if (elname == "data_space") {
+      const string &spaceName( (*iter)->getAttributeValue("space"));
+      AddrSpace *spc = getSpaceByName(spaceName);
+      if (spc == (AddrSpace *)0)
+        throw LowlevelError("Undefined space: "+spaceName);
+      setDefaultDataSpace(spc->getIndex());
+    }
     else if (elname == "segmented_address") {
     }
     else if (elname == "default_symbols") {
@@ -1049,8 +1118,6 @@ void Architecture::parseProcessorConfig(DocumentStorage &store)
     else if (elname == "address_shift_amount") {
     }
     else if (elname == "properties") {
-    }
-    else if (elname == "data_space") {
     }
     else
       throw LowlevelError("Unknown element in <processor_spec>: "+elname);
@@ -1191,6 +1258,7 @@ void Architecture::init(DocumentStorage &store)
   buildContext(store);
   buildTypegrp(store);
   buildCommentDB(store);
+  buildStringManager(store);
   buildConstantPool(store);
 
   restoreFromSpec(store);
@@ -1199,6 +1267,31 @@ void Architecture::init(DocumentStorage &store)
 
   buildInstructions(store); // Must be called after translate is built
   fillinReadOnlyFromLoader();
+}
+
+void Architecture::resetDefaultsInternal(void)
+
+{
+  trim_recurse_max = 5;
+  max_implied_ref = 2;		// 2 is best, in specific cases a higher number might be good
+  max_term_duplication = 2;	// 2 and 3 (4) are reasonable
+  max_basetype_size = 10;	// Needs to be 8 or bigger
+  flowoptions = FlowInfo::error_toomanyinstructions;
+  max_instructions = 100000;
+  infer_pointers = true;
+  readonlypropagate = false;
+  alias_block_level = 2;	// Block structs and arrays by default
+}
+
+/// Reset options that can be modified by the OptionDatabase. This includes
+/// options specific to this class and options under PrintLanguage and ActionDatabase
+void Architecture::resetDefaults(void)
+
+{
+  resetDefaultsInternal();
+  allacts.resetDefaults();
+  for(int4 i=0;i<printlist.size();++i)
+    printlist[i]->resetDefaults();
 }
 
 Address SegmentedResolver::resolve(uintb val,int4 sz,const Address &point,uintb &fullEncoding)

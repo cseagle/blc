@@ -113,11 +113,11 @@ struct Decompiled {
 	strvec_t* sv;       //text of the decompiled function displayed in a custom_viewer
 	map<string, LocalVar*> locals;
 
-	Decompiled(Function* f, func_t* func) : ast(f), ida_func(func), sv(NULL) {};
-	~Decompiled();
+   Decompiled(Function *f, func_t *func) : ast(f), ida_func(func), sv(NULL) {};
+   ~Decompiled();
 
-	void set_ud(strvec_t* ud);
-	strvec_t* get_ud() { return sv; };
+   void set_ud(strvec_t *ud);
+   strvec_t *get_ud() {return sv;};
 };
 
 Decompiled::~Decompiled() {
@@ -538,19 +538,19 @@ static bool idaapi ct_keyboard(TWidget* w, int key, int shift, void* ud) {
 					// msg("You seem to be referring to this decl: %s on line %d col %d\n", decl->var->name.c_str(), decl->line_begin, decl->col_start);
 				}
 #if 0
-				//not ready yet
-							   //need to get string representation of the decl (if type is known) to display to user
-				if (ask_str(&word, HIST_IDENT, "Please enter the type declaration")) {
-					//now we need to parse what the user entered to extract only type related info
-					//then determine whether the user entered a type known to ida, and if so
-					//update the ast to change the variable's type. If the variable is a stack variable,
-					//global variable, or function parameter, also change the type in IDA.
-					//If the type is for a register variable, then update the variable's type in a
-					//netnode (like the variable name map)
+//not ready yet
+               //need to get string representation of the decl (if type is known) to display to user
+               if (ask_str(&word, HIST_IDENT, "Please enter the type declaration")) {
+                  //now we need to parse what the user entered to extract only type related info
+                  //then determine whether the user entered a type known to ida, and if so
+                  //update the ast to change the variable's type. If the variable is a stack variable,
+                  //global variable, or function parameter, also change the type in IDA.
+                  //If the type is for a register variable, then update the variable's type in a
+                  //netnode (like the variable name map)
 
-					//use parse_decl to parse user text into a type
-					//then will need to extract IDA's tinfo_t information back to an updated ast Type node
-				}
+                  //use parse_decl to parse user text into a type
+                  //then will need to extract IDA's tinfo_t information back to an updated ast Type node
+               }
 #endif
 			}
 			return true;
@@ -684,6 +684,7 @@ map<int, string> return_reg_map;
 
 int blc_init_old(void);
 
+static const char *name_dialog;
 #if IDA_SDK_VERSION > 740	
 size_t idaapi blc_init_new(void);
 #else
@@ -847,103 +848,112 @@ filetype_t inf_get_filetype() {
 #endif
 
 int get_proc_id() {
-	return ph.id;
+#if IDA_SDK_VERSION < 750
+   return ph.id;
+#else
+   return PH.id;
+#endif
 }
 
-bool get_sleigh_id(string& sleigh) {
-	sleigh.clear();
-	map<int, string>::iterator proc = proc_map.find(ph.id);
-	if (proc == proc_map.end()) {
-		return false;
-	}
-	compiler_info_t cc;
-	inf_get_cc(&cc);
-	bool is_64 = inf_is_64bit();
-	bool is_be = inf_is_be();
-	filetype_t ftype = inf_get_filetype();
+bool get_sleigh_id(string &sleigh) {
+   sleigh.clear();
+   map<int,string>::iterator proc = proc_map.find(get_proc_id());
+   if (proc == proc_map.end()) {
+      return false;
+   }
+   compiler_info_t cc;
+   inf_get_cc(&cc);
+   bool is_64 = inf_is_64bit();
+   bool is_be = inf_is_be();
+   filetype_t ftype = inf_get_filetype();
 
 	sleigh = proc->second + (is_be ? ":BE" : ":LE");
 
-	switch (ph.id) {
-	case PLFM_6502:
-		sleigh += ":16:default";
-		break;
-	case PLFM_68K:
-		//options include "default" "MC68030" "MC68020" "Coldfire"
-		sleigh += ":32:default";
-		break;
-	case PLFM_6800:
-		sleigh += ":8:default";
-		break;
-	case PLFM_8051:
-		sleigh += ":16:default";
-		break;
-	case PLFM_ARM:
-		//options include "v8" "v8T" "v8LEInstruction" "v7" "v7LEInstruction" "Cortex"
-		//                "v6" "v5t" "v5" "v4t" "v4" "default"
-		if (is_64) {  //AARCH64
-			sleigh = "AARCH64";
-			sleigh += (is_be ? ":BE:64:v8A" : ":LE:64:v8A");
-		}
-		else {
-			sleigh += ":32:v7";
-		}
-		break;
-	case PLFM_AVR:
-		sleigh += ":16:default";
-		break;
-	case PLFM_CR16:
-		sleigh += ":16:default";
-		break;
-	case PLFM_DALVIK:
-		sleigh += ":32:default";
-		break;
-	case PLFM_JAVA:
-		sleigh += ":32:default";
-		break;
-	case PLFM_MIPS: {
-		//options include "R6" "micro" "64-32addr" "micro64-32addr" "64-32R6addr" "default"
-		qstring abi;
-		if (get_abi_name(&abi) > 0 && abi.find("n32") == 0) {
-			sleigh += ":64:64-32addr";
-		}
-		else {
-			sleigh += is_64 ? ":64:default" : ":32:default";
-		}
-		break;
-	}
-	case PLFM_HPPA:
-		sleigh += ":32:default";
-		break;
-	case PLFM_PIC:
-		break;
-	case PLFM_PPC: {
-		//options include "default" "64-32addr" "4xx" "MPC8270" "QUICC" "A2-32addr"
-		//                "A2ALT-32addr" "A2ALT" "VLE-32addr" "VLEALT-32addr"
-		qstring abi;
-		if (get_abi_name(&abi) > 0 && abi.find("xbox") == 0) {
-			// ABI name is set to "xbox" for X360 PPC executables
-			sleigh += ":64:A2ALT-32addr";
-		}
-		else {
-			sleigh += is_64 ? ":64:default" : ":32:default";
-		}
-		break;
-	}
-	case PLFM_SPARC:
-		sleigh += is_64 ? ":64" : ":32";
-		sleigh += ":default";
-		break;
-	case PLFM_MSP430:
-		sleigh += ":16:default";
-		break;
-	case PLFM_TRICORE:
-		sleigh += ":32:default";
-		break;
-	case PLFM_386:
-		//options include "System Management Mode" "Real Mode" "Protected Mode" "default"
-		sleigh += is_64 ? ":64" : (inf_is_32bit() ? ":32" : ":16");
-		sleigh += ":default";
+   switch (get_proc_id()) {
+      case PLFM_6502:
+         sleigh += ":16:default";
+         break;
+      case PLFM_68K:
+         //options include "default" "MC68030" "MC68020" "Coldfire"
+         sleigh += ":32:default";
+         break;
+      case PLFM_6800:
+         sleigh += ":8:default";
+         break;
+      case PLFM_8051:
+         sleigh += ":16:default";
+         break;
+      case PLFM_ARM:
+         //options include "v8" "v8T" "v8LEInstruction" "v7" "v7LEInstruction" "Cortex"
+         //                "v6" "v5t" "v5" "v4t" "v4" "default"
+         if (is_64) {  //AARCH64
+            sleigh = "AARCH64";
+            sleigh += (is_be ? ":BE:64:v8A" : ":LE:64:v8A");
+         }
+         else {
+            sleigh += ":32:v7";
+         }
+         break;
+      case PLFM_AVR:
+         sleigh += ":16:default";
+         break;
+      case PLFM_CR16:
+         sleigh += ":16:default";
+         break;
+      case PLFM_DALVIK:
+         sleigh += ":32:default";
+         break;
+      case PLFM_JAVA:
+         sleigh += ":32:default";
+         break;
+      case PLFM_MIPS: {
+         //options include "R6" "micro" "64-32addr" "micro64-32addr" "64-32R6addr" "default"
+         qstring abi;
+         if (get_abi_name(&abi) > 0 && abi.find("n32") == 0) {
+            sleigh += ":64:64-32addr";
+         }
+         else {
+            sleigh += is_64 ? ":64:default" : ":32:default";
+         }
+         break;
+      }
+      case PLFM_HPPA:
+         sleigh += ":32:default";
+         break;
+      case PLFM_PIC:
+         break;
+      case PLFM_PPC: {
+         //options include "default" "64-32addr" "4xx" "MPC8270" "QUICC" "A2-32addr"
+         //                "A2ALT-32addr" "A2ALT" "VLE-32addr" "VLEALT-32addr"
+         qstring abi;
+         if (get_abi_name(&abi) > 0 && abi.find("xbox") == 0) {
+            // ABI name is set to "xbox" for X360 PPC executables
+            sleigh += ":64:A2ALT-32addr";
+         }
+         else {
+            sleigh += is_64 ? ":64:default" : ":32:default";
+         }
+         break;
+      }
+      case PLFM_SPARC:
+         sleigh += is_64 ? ":64" : ":32";
+         sleigh += ":default";
+         break;
+      case PLFM_MSP430:
+         sleigh += ":16:default";
+         break;
+      case PLFM_TRICORE:
+         sleigh += ":32:default";
+         break;
+      case PLFM_386:
+         //options include "System Management Mode" "Real Mode" "Protected Mode" "default"
+         sleigh += is_64 ? ":64" : (inf_is_32bit() ? ":32" : ":16");
+         if (sleigh.find(":16") != string::npos) {
+            sleigh += ":Real Mode";
+         }
+         else {
+            sleigh += ":default";
+         }
 
 		if (cc.id == COMP_BC) {
 			sleigh += ":borlandcpp";
@@ -1194,12 +1204,68 @@ const char* tag_remove(const char* tagged) {
 	return ll.c_str();
 }
 
-// everything starts here
+#if IDA_SDK_VERSION >= 750
+
+struct blc_plugmod_t : public plugmod_t {
+  /// Invoke the plugin.
+  virtual bool idaapi run(size_t arg);
+
+  /// Virtual destructor.
+  virtual ~blc_plugmod_t();
+};
+
+plugmod_t *idaapi blc_init(void) {
+   //do ida related init
+   init_ida_ghidra();
+
+   if (ghidra_init()) {
+      return new blc_plugmod_t();
+   }
+   else {
+      return NULL;
+   }
+}
+
+blc_plugmod_t::~blc_plugmod_t(void) {
+   ghidra_term();
+}
+
+bool idaapi blc_plugmod_t::run(size_t /*arg*/) {
+   ea_t addr = get_screen_ea();
+   decompile_at(addr);
+   return true;
+}
+
+#define blc_run NULL
+#define blc_term NULL
+
+#else
+
+//make life easier in a post 7.5 world
+#define PLUGIN_MULTI 0
+
+int idaapi blc_init(void) {
+   //do ida related init
+   init_ida_ghidra();
+
+   if (ghidra_init()) {
+      return PLUGIN_KEEP;
+   }
+   else {
+      return PLUGIN_SKIP;
+   }
+}
+
+void idaapi blc_term(void) {
+   ghidra_term();
+}
+
 bool idaapi blc_run(size_t /*arg*/) {
 	ea_t addr = get_screen_ea();
 	decompile_at(addr);
 	return true;
 }
+#endif
 
 int64_t get_name(string& name, uint64_t ea, int flags) {
 	qstring ida_name;
@@ -1388,16 +1454,21 @@ bool is_read_only(uint64_t ea) {
 	return false;
 }
 
-bool simplify_deref(const string& name, string& new_name) {
-	uint64_t tgt;
-	ea_t addr = get_name_ea(BADADDR, name.c_str());
-	if (addr != BADADDR && is_read_only(addr) && is_pointer_var(addr, (uint32_t)ph.max_ptr_size(), &tgt)) {
-		if (get_name(new_name, tgt, 0)) {
-			dmsg("could simplify *%s to %s\n", name.c_str(), new_name.c_str());
-			return true;
-		}
-	}
-	return false;
+bool simplify_deref(const string &name, string &new_name) {
+   uint64_t tgt;
+   ea_t addr = get_name_ea(BADADDR, name.c_str());
+#if IDA_SDK_VERSION < 750
+   uint32_t max_ptr_size = (uint32_t)ph.max_ptr_size();
+#else
+   uint32_t max_ptr_size = (uint32_t)PH.max_ptr_size();
+#endif
+   if (addr != BADADDR && is_read_only(addr) && is_pointer_var(addr, max_ptr_size, &tgt)) {
+      if (get_name(new_name, tgt, 0)) {
+//         msg("could simplify *%s to %s\n", name.c_str(), new_name.c_str());
+         return true;
+      }
+   }
+   return false;
 }
 
 void adjust_thunk_name(string& name) {
@@ -1648,8 +1719,8 @@ char wanted_hotkey[] = "Alt-F3";
 plugin_t PLUGIN =
 {
   IDP_INTERFACE_VERSION,
-  0,                    // plugin flags
-  blc_init_new,          // initialize
+  PLUGIN_MULTI,      // plugin flags
+  blc_init,          // initialize
   blc_term,          // terminate. this pointer may be NULL.
   blc_run,           // invoke plugin
   comment,              // long comment about the plugin

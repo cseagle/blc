@@ -117,7 +117,8 @@ string get_string(const string& name);
 
 bool is_string(const string& name);
 
-int blc_init(void);
+bool ghidra_init(void);
+void ghidra_term(void);
 
 #endif
 

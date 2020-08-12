@@ -56,7 +56,7 @@ Symbol *ida_scope::ida_query(const Address &addr) const {
 */   
    dmsg("ida_scope::ida_query - 0x%zx\n", addr.getOffset());
    AddrSpace *aspace = addr.getSpace();
-   if (aspace == ida->getDefaultSpace()) {
+   if (aspace == ida->getDefaultCodeSpace()) {
       if (is_function_start(ea)) {
          get_func_name(symname, ea);
 /*         
