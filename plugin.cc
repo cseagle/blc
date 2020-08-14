@@ -79,9 +79,13 @@
 #define DIRSEP "/"
 #endif
 
-//debug flags
+// debug flags
 //#define DEBUG_PLUGIN 1
 //#define DEVFUNC 1
+
+// enable support for additional procs:
+// NEC850/RH850 - https://github.com/esaulenka/ghidra_v850
+#define NEWPROCS 1
 
 #ifdef DEBUG_PLUGIN
 #define dmsg(x, ...) msg(x, __VA_ARGS__)
@@ -776,6 +780,9 @@ void init_ida_ghidra() {
 	proc_map[PLFM_TRICORE] = "tricore";
 	proc_map[PLFM_386] = "x86";
 	proc_map[PLFM_Z80] = "Z80";
+#if NEWPROCS	
+	proc_map[PLFM_NEC_V850X] = "v850";
+#endif
 
 	return_reg_map[PLFM_6502] = "6502";
 	return_reg_map[PLFM_68K] = "68000";
@@ -798,6 +805,9 @@ void init_ida_ghidra() {
 	return_reg_map[PLFM_TRICORE] = "tricore";
 	return_reg_map[PLFM_386] = "al:ax:eax:rax";
 	return_reg_map[PLFM_Z80] = "Z80";
+#if NEWPROCS	
+	return_reg_map[PLFM_NEC_V850X] = "v850";
+#endif
 
 	type_sizes["void"] = 1;
 	type_sizes["bool"] = 1;
@@ -969,6 +979,11 @@ bool get_sleigh_id(string &sleigh) {
 		break;
 	case PLFM_Z80:
 		break;
+#if NEWPROCS		
+	case PLFM_NEC_V850X:
+		sleigh += ":32:default";
+		break;
+#endif		
 	default:
 		return false;
 	}
@@ -1690,7 +1705,7 @@ bool is_string(const string& name) {
 }
 
 void print_blc_banner() {
-	if (sleigh_id.c_str())
+	if (!sleigh_id.c_str())
 		msg("Ghidra Decompiler (blc) - CPU not supported!\n");
 	else {
 		msg("Ghidra Decompiler (blc) ready.\nUsing sleigh id: %s\n", sleigh_id.c_str());

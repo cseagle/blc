@@ -197,6 +197,8 @@ bool ghidra_init(void) {
     get_input_file_path(filename);
 
     get_sleigh_id(sleigh_id);
+    
+    dmsg("SI: %s", sleigh_id);
 
     //implement most of IfcLoadFile::execute here since file is
     //already loaded in IDA
