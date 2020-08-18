@@ -409,18 +409,21 @@ NameExpr::NameExpr(const string& var, bool _global) : name(var), global(_global)
 	adjust_thunk_name(name);
 }
 
-//things like var names etc.
+//process color for things like vars, params etc.
 void NameExpr::print() {
 	dmsg("NameExpr::print %s\n", name.c_str());
 	if (is_extern(name)) {
-		append_colored(COLOR_IMPNAME, name); 
+		append_colored(COLOR_IMPNAME, name);
+		dmsg("COLOR_IMPNAME\n");
 	}
 	else if (is_library_func(name)) {
 		append_colored(COLOR_MACRO, name);
+		dmsg("COLOR_MACRO\n");
 	}
 	//for binaries with string names segments like macho
 	else if (is_string(name)) {
 			append_colored(COLOR_MACRO, name);
+			dmsg("COLOR_MACRO\n");
 			//Todo: get string an display
 	}
 	else {
@@ -451,17 +454,20 @@ void NameExpr::rename(const string& oldname, const string& newname) {
 	}
 }
 
-// function names
+// process function name colors
 void FuncNameExpr::print() {
 	dmsg("FuncNameExpr::print %s\n", name.c_str());
 	if (is_extern(name)) {
-		append_colored(COLOR_IMPNAME, name); 
+		append_colored(COLOR_IMPNAME, name);
+		dmsg("FuncNameExpr COLOR_IMPNAME\n");
 	}
 	else if (is_library_func(name)) {
 		append_colored(COLOR_MACRO, name);
+		dmsg("FuncNameExpr COLOR_MACRO\n");
 	}
 	else {
 		append_colored(COLOR_KEYWORD, name);
+		dmsg("FuncNameExpr COLOR_KEYWORD\n");
 	}
 }
 

@@ -1338,7 +1338,10 @@ bool is_code_label(uint64_t ea, string& name) {
 	}
 	return false;
 }
-
+/*
+	check if adress is extern by validating the segment type in which ea is located
+	or checking for common segment names
+*/
 bool is_extern_addr(uint64_t ea) {
 
 	qstring sname, stype;
@@ -1349,7 +1352,14 @@ bool is_extern_addr(uint64_t ea) {
 		get_segm_name(&sname, s);
 		get_segm_class(&stype, s);
 
-		if (stype == "XTRN" || sname == "extern") {
+		dmsg("is_extern_addr ea: %x %s %s\n", ea, sname.c_str(), stype.c_str());
+
+		if (stype == "XTRN" || 
+			//strcmp return 0 if equal!
+			!strcmp(sname.c_str(), "extern") ||		// name in a lot of ELF Binaries
+			!strcmp(sname.c_str(), ".idata"))		// name in PE bins on Windows
+		{
+			dmsg("is_extern_addr true\n");
 			return true;
 		}
 	}
@@ -1383,15 +1393,36 @@ bool is_extern(const string& name) {
 	bool res = false;
 	ea_t ea = get_name_ea(BADADDR, name.c_str());
 	if (ea == BADADDR) {
+		dmsg("is_extern called for %s (BADADDR)\n", name.c_str());
 		return false;
 	}
 	if (is_function_start(ea)) {
+		dmsg("is_extern - is_function_start\n");
 		res = is_external_ref(ea, NULL);
 	}
 	else {
 		res = is_extern_addr(ea);
 	}
-	//   msg("is_extern called for %s (%d)\n", name.c_str(), res);
+#if DEBUG_PLUGIN
+	if ((res == false) && true) {
+		
+		// code for debugging xrefs
+
+		//decode insn to get assembly command
+		insn_t ida_instruction;
+
+		if (decode_insn(&ida_instruction, ea) <= 0) {
+			return false;
+		}
+
+		dmsg("is_indirect_jump_insn = %d\n", is_indirect_jump_insn(ida_instruction));
+		dmsg("is_call_insn  = %d\n", is_call_insn(ida_instruction));
+
+		string astring;
+		dmsg("is_code_label = %d\n", is_code_label(ea, astring));
+	}
+#endif
+	dmsg("is_extern called for %s (%d)\n", name.c_str(), res);
 	return res;
 }
 
