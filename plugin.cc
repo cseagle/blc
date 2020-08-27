@@ -84,7 +84,8 @@
 //#define DEVFUNC 1
 
 // enable support for additional procs:
-// NEC850/RH850 - https://github.com/esaulenka/ghidra_v850
+// NEC850/RH850 - changed as NSA releases a own module in 9.2 valled V850 vs. v850 (previously)
+
 #define NEWPROCS 1
 
 #ifdef DEBUG_PLUGIN
@@ -781,7 +782,7 @@ void init_ida_ghidra() {
 	proc_map[PLFM_386] = "x86";
 	proc_map[PLFM_Z80] = "Z80";
 #if NEWPROCS	
-	proc_map[PLFM_NEC_V850X] = "v850";
+	proc_map[PLFM_NEC_V850X] = "V850";
 #endif
 
 	return_reg_map[PLFM_6502] = "6502";
@@ -806,7 +807,7 @@ void init_ida_ghidra() {
 	return_reg_map[PLFM_386] = "al:ax:eax:rax";
 	return_reg_map[PLFM_Z80] = "Z80";
 #if NEWPROCS	
-	return_reg_map[PLFM_NEC_V850X] = "v850";
+	return_reg_map[PLFM_NEC_V850X] = "V850";
 #endif
 
 	type_sizes["void"] = 1;
