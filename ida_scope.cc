@@ -28,8 +28,9 @@
 #define dmsg(x, ...)
 #endif
 
+/// \param id is the globally unique id associated with the scope
 /// \param g is the Architecture and ida interface
-ida_scope::ida_scope(ida_arch *g) : ScopeInternal("", g), ida(g) {}
+ida_scope::ida_scope(uint64_t id, ida_arch *g) : ScopeInternal(id, "", g), ida(g) {}
 
 ida_scope::~ida_scope(void) {
 }

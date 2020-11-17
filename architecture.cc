@@ -102,7 +102,7 @@ Architecture::Architecture(void)
   commentdb = (CommentDatabase *)0;
   stringManager = (StringManager *)0;
   cpool = (ConstantPool *)0;
-  symboltab = new Database(this);
+  symboltab = (Database *)0;
   context = (ContextDatabase *)0;
   print = PrintLanguageCapability::getDefault()->buildLanguage(this);
   printlist.push_back(print);
@@ -131,7 +131,8 @@ Architecture::~Architecture(void)
   for(int4 i=0;i<extra_pool_rules.size();++i)
     delete extra_pool_rules[i];
 
-  delete symboltab;
+  if (symboltab != (Database *)0)
+    delete symboltab;
   for(int4 i=0;i<(int4)printlist.size();++i)
     delete printlist[i];
   delete options;
@@ -371,7 +372,7 @@ void Architecture::setPrintLanguage(const string &nm)
 void Architecture::globalify(void)
 
 {
-  Scope *scope = buildGlobalScope();
+  Scope *scope = symboltab->getGlobalScope();
   int4 nm = numSpaces();
 
   for(int4 i=0;i<nm;++i) {
@@ -528,16 +529,16 @@ void Architecture::buildContext(DocumentStorage &store)
   context = new ContextInternal();
 }
 
-/// If it does not already exist create the glocal Scope object
+/// Create the database object, which currently doesn't not depend on any configuration
+/// data.  Then create the root (global) scope and attach it to the database.
+/// \param store is the storage for any configuration data
 /// \return the global Scope object
-Scope *Architecture::buildGlobalScope(void)
+Scope *Architecture::buildDatabase(DocumentStorage &store)
 
 {
-  Scope *globscope = symboltab->getGlobalScope();
-  if (globscope == (Scope *)0) { // Make sure global scope exists
-    globscope = new ScopeInternal("",this);
-    symboltab->attachScope(globscope,(Scope *)0);
-  }
+  symboltab = new Database(this,true);
+  Scope *globscope = new ScopeInternal(0,"",this);
+  symboltab->attachScope(globscope,(Scope *)0);
   return globscope;
 }
 
@@ -802,7 +803,7 @@ void Architecture::parseDefaultProto(const Element *el)
 void Architecture::parseGlobal(const Element *el)
 
 {
-  Scope *scope = buildGlobalScope();
+  Scope *scope = symboltab->getGlobalScope();
   const List &list(el->getChildren());
   List::const_iterator iter;
 
@@ -829,15 +830,15 @@ void Architecture::parseGlobal(const Element *el)
 void Architecture::addOtherSpace(void)
 
 {
-  Scope *scope = buildGlobalScope();
+  Scope *scope = symboltab->getGlobalScope();
   AddrSpace *otherSpace = getSpaceByName("OTHER");
   symboltab->addRange(scope,otherSpace,0,otherSpace->getHighest());
   if (otherSpace->isOverlayBase()) {
-	int4 num = numSpaces();
-	for(int4 i=0;i<num;++i){
-      OverlaySpace *ospc = (OverlaySpace *)getSpace(i);
-      if (ospc->getBaseSpace() != otherSpace) continue;
-      if (ospc->getBaseSpace() != otherSpace) continue;
+    int4 num = numSpaces();
+    for(int4 i=0;i<num;++i){
+      AddrSpace *ospc = getSpace(i);
+      if (!ospc->isOverlay()) continue;
+      if (((OverlaySpace *)ospc)->getBaseSpace() != otherSpace) continue;
       symboltab->addRange(scope,ospc,0,otherSpace->getHighest());
     }
   }
@@ -984,6 +985,20 @@ void Architecture::parseDeadcodeDelay(const Element *el)
     throw LowlevelError("Bad <deadcodedelay> tag");
 }
 
+/// Alter the range of addresses for which a pointer is allowed to be inferred.
+void Architecture::parseInferPtrBounds(const Element *el)
+
+{
+  const List &list(el->getChildren());
+  List::const_iterator iter;
+  for(iter=list.begin();iter!=list.end();++iter) {
+    const Element *subel = *iter;
+    Range range;
+    range.restoreXml(subel,this);
+    setInferPtrBounds(range);
+  }
+}
+
 /// Pull information from a \<funcptr> tag. Turn on alignment analysis of
 /// function pointers, some architectures have aligned function pointers
 /// and encode extra information in the unused bits.
@@ -1109,6 +1124,9 @@ void Architecture::parseProcessorConfig(DocumentStorage &store)
         throw LowlevelError("Undefined space: "+spaceName);
       setDefaultDataSpace(spc->getIndex());
     }
+    else if (elname == "inferptrbounds") {
+      parseInferPtrBounds(*iter);
+    }
     else if (elname == "segmented_address") {
     }
     else if (elname == "default_symbols") {
@@ -1183,6 +1201,8 @@ void Architecture::parseCompilerConfig(DocumentStorage &store)
       parseFuncPtrAlign(*iter);
     else if (elname == "deadcodedelay")
       parseDeadcodeDelay(*iter);
+    else if (elname == "inferptrbounds")
+      parseInferPtrBounds(*iter);
   }
   // <global> tags instantiate the base symbol table
   // They need to know about all spaces, so it must come
@@ -1260,9 +1280,11 @@ void Architecture::init(DocumentStorage &store)
   buildCommentDB(store);
   buildStringManager(store);
   buildConstantPool(store);
+  buildDatabase(store);
 
   restoreFromSpec(store);
   print->getCastStrategy()->setTypeFactory(types);
+  symboltab->adjustCaches();	// In case the specs created additional address spaces
   postSpecFile();		// Let subclasses do things after translate is ready
 
   buildInstructions(store); // Must be called after translate is built

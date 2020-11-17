@@ -39,6 +39,8 @@ using std::map;
 #include "ida_arch.hh"
 #include "ast.hh"
 
+//#define DEBUG 1
+
 stringstream *err_stream;
 
 static string sleigh_id;
@@ -326,6 +328,10 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
          arch->print->setXML(false);
          xml = ss.str();
 
+#ifdef DEBUG
+         msg("%s\n", xml.c_str());
+#endif
+
          //print the xml
          Document *doc = xml_tree(ss);
 
@@ -335,14 +341,18 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 //            msg("%s\n", pretty.c_str());
 
             *result = func_from_xml(doc->getRoot(), start_ea);
-//            msg("%s\n", c_code.c_str());
+#ifdef DEBUG
+            msg("%s\n", c_code.c_str());
+#endif
             delete doc;
          }
       }
       check_err_stream();
    }
    else {
-//      msg("Error, no Funcdata at 0x%x\n", (uint32_t)ea);
+#ifdef DEBUG
+      msg("Error, no Funcdata at 0x%llx\n", (uint64_t)start_ea);
+#endif
    }
    return res;
 }

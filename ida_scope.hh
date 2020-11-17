@@ -46,7 +46,7 @@ class ida_scope : public ScopeInternal {
    ida_arch *ida;    ///< Architecture and connection to the ida client
    Symbol *ida_query(const Address &addr) const;    ///< Process a query that missed the cache
 public:
-   ida_scope(ida_arch *g); ///< Constructor
+   ida_scope(uint64_t id, ida_arch *g); ///< Constructor
 
    virtual ~ida_scope(void);
    virtual SymbolEntry *addSymbol(const string &name, Datatype *ct,

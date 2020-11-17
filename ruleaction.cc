@@ -5509,6 +5509,7 @@ int4 RuleEqual2Zero::applyOp(PcodeOp *op,Funcdata &data)
   if (vn2->isConstant()) {
     Address val(vn2->getSpace(),uintb_negate(vn2->getOffset()-1,vn2->getSize()));
     unnegvn = data.newVarnode(vn2->getSize(),val);
+    unnegvn->copySymbolIfValid(vn2);	// Propagate any markup
     posvn = vn;
   }
   else {
@@ -5627,7 +5628,10 @@ AddTreeState::AddTreeState(Funcdata &d,PcodeOp *op,int4 slot)
   ptrsize = ptr->getSize();
   ptrmask = calc_mask(ptrsize);
   baseType = ct->getPtrTo();
-  size = AddrSpace::byteToAddressInt(baseType->getSize(),ct->getWordSize());
+  if (baseType->isVariableLength())
+    size = 0;		// Open-ended size being pointed to, there will be no "multiples" component
+  else
+    size = AddrSpace::byteToAddressInt(baseType->getSize(),ct->getWordSize());
   multsum = 0;		// Sums start out as zero
   nonmultsum = 0;
   correct = 0;
@@ -6363,30 +6367,8 @@ int4 RulePtrsubUndo::applyOp(PcodeOp *op,Funcdata &data)
   if (!data.isTypeRecoveryOn()) return 0;
 
   Varnode *basevn = op->getIn(0);
-  TypePointer *ct = (TypePointer *)basevn->getType();
-  bool undo = false;
-  
-  if (ct->getMetatype()!=TYPE_PTR)
-    undo = true;
-  else {
-    Datatype *basetype = ct->getPtrTo();
-    if (basetype->getMetatype()==TYPE_SPACEBASE) {
-      uintb newoff = AddrSpace::addressToByte(op->getIn(1)->getOffset(),ct->getWordSize());
-      basetype->getSubType(newoff,&newoff);
-      if (newoff != 0)
-	undo = true;
-    }
-    else {
-      int4 size = op->getIn(1)->getOffset();
-      int4 typesize = basetype->getSize();
-      if ((basetype->getMetatype()!=TYPE_ARRAY)&&(basetype->getMetatype()!=TYPE_STRUCT))
-	undo = true;		// Not a pointer to a structured type
-      else if ((typesize <= AddrSpace::addressToByteInt(size,ct->getWordSize()))&&(typesize!=0))
-	undo = true;
-    }
-  }
-
-  if (!undo) return 0;
+  if (basevn->getType()->isPtrsubMatching(op->getIn(1)->getOffset()))
+    return 0;
 
   data.opSetOpcode(op,CPUI_INT_ADD);
   return 1;
@@ -6992,7 +6974,12 @@ Varnode *RuleDivOpt::findForm(PcodeOp *op,int4 &n,uintb &y,int4 &xsize,OpCode &e
   if (curOp->code() != CPUI_INT_MULT) return (Varnode *)0;	// There MUST be an INT_MULT
   Varnode *inVn = curOp->getIn(0);
   if (!inVn->isWritten()) return (Varnode *)0;
-  if (curOp->getIn(1)->isConstantExtended(y) < 0) return (Varnode *)0;	// There MUST be a constant
+  if (inVn->isConstantExtended(y) >= 0) {
+    inVn = curOp->getIn(1);
+    if (!inVn->isWritten()) return (Varnode *)0;
+  }
+  else if (curOp->getIn(1)->isConstantExtended(y) < 0)
+    return (Varnode *)0;	// There MUST be a constant
 
   Varnode *resVn;
   PcodeOp *extOp = inVn->getDef();
@@ -7084,27 +7071,79 @@ uintb RuleDivOpt::calcDivisor(uintb n,uint8 y,int4 xsize)
 ///  - `V >> 0x1f`
 ///  - `V s>> 0x1f`
 ///
+/// Allow for the value to be COPYed around.
 /// \param firstVn is the first given Varnode
 /// \param replaceVn is the Varnode to replace it with in each extraction
 /// \param data is the function holding the Varnodes
 void RuleDivOpt::moveSignBitExtraction(Varnode *firstVn,Varnode *replaceVn,Funcdata &data)
 
 {
-  list<PcodeOp *>::const_iterator iter = firstVn->beginDescend();
-  while(iter!=firstVn->endDescend()) {
-    PcodeOp *op = *iter;
-    ++iter;		// Increment before modifying the op
-    OpCode opc = op->code();
-    if (opc == CPUI_INT_RIGHT || opc == CPUI_INT_SRIGHT) {
-      Varnode *constVn = op->getIn(1);
-      if (constVn->isConstant()) {
-	int4 sa = firstVn->getSize() * 8 - 1;
-	if (sa == (int4)constVn->getOffset()) {
-	  data.opSetInput(op,replaceVn,0);
+  vector<Varnode *> testList;
+  testList.push_back(firstVn);
+  if (firstVn->isWritten()) {
+    PcodeOp *op = firstVn->getDef();
+    if (op->code() == CPUI_INT_SRIGHT) {
+      // Same sign bit could be extracted from previous shifted version
+      testList.push_back(op->getIn(0));
+    }
+  }
+  for(int4 i=0;i<testList.size();++i) {
+    Varnode *vn = testList[i];
+    list<PcodeOp *>::const_iterator iter = vn->beginDescend();
+    while(iter!=vn->endDescend()) {
+      PcodeOp *op = *iter;
+      ++iter;		// Increment before modifying the op
+      OpCode opc = op->code();
+      if (opc == CPUI_INT_RIGHT || opc == CPUI_INT_SRIGHT) {
+	Varnode *constVn = op->getIn(1);
+	if (constVn->isWritten()) {
+	  PcodeOp *constOp = constVn->getDef();
+	  if (constOp->code() == CPUI_COPY)
+	    constVn = constOp->getIn(0);
+	  else if (constOp->code() == CPUI_INT_AND) {
+	    constVn = constOp->getIn(0);
+	    Varnode *otherVn = constOp->getIn(1);
+	    if (!otherVn->isConstant()) continue;
+	    if (constVn->getOffset() != (constVn->getOffset() & otherVn->getOffset())) continue;
+	  }
 	}
+	if (constVn->isConstant()) {
+	  int4 sa = firstVn->getSize() * 8 - 1;
+	  if (sa == (int4)constVn->getOffset()) {
+	    data.opSetInput(op,replaceVn,0);
+	  }
+	}
+      }
+      else if (opc == CPUI_COPY) {
+	testList.push_back(op->getOut());
       }
     }
   }
+}
+
+/// A form ending in a SUBPIECE, may be contained in a working form ending at
+/// the SUBPIECE followed by INT_SRIGHT.  The containing form would supersede.
+/// \param op is the root of the form to check
+/// \return \b true if it is (possibly) contained in a superseding form
+bool RuleDivOpt::checkFormOverlap(PcodeOp *op)
+
+{
+  if (op->code() != CPUI_SUBPIECE) return false;
+  Varnode *vn = op->getOut();
+  list<PcodeOp *>::const_iterator iter;
+  for(iter=vn->beginDescend();iter!=vn->endDescend();++iter) {
+    PcodeOp *superOp = *iter;
+    OpCode opc = superOp->code();
+    if (opc != CPUI_INT_RIGHT && opc != CPUI_INT_SRIGHT) continue;
+    Varnode *cvn = superOp->getIn(1);
+    if (!cvn->isConstant()) return true;	// Might be a form where constant has propagated yet
+    int4 n,xsize;
+    uintb y;
+    OpCode extopc;
+    Varnode *inVn = findForm(superOp, n, y, xsize, extopc);
+    if (inVn != (Varnode *)0) return true;
+  }
+  return false;
 }
 
 /// \class RuleDivOpt
@@ -7129,6 +7168,7 @@ int4 RuleDivOpt::applyOp(PcodeOp *op,Funcdata &data)
   OpCode extOpc;
   Varnode *inVn = findForm(op,n,y,xsize,extOpc);
   if (inVn == (Varnode *)0) return 0;
+  if (checkFormOverlap(op)) return 0;
   if (extOpc == CPUI_INT_SEXT)
     xsize -= 1;		// one less bit for signed, because of signbit
   uintb divisor = calcDivisor(n,y,xsize);
@@ -9045,3 +9085,35 @@ int4 RulePiecePathology::applyOp(PcodeOp *op,Funcdata &data)
   return tracePathologyForward(op, data);
 }
 
+void RuleXorSwap::getOpList(vector<uint4> &oplist) const
+
+{
+  oplist.push_back(CPUI_INT_XOR);
+}
+
+int4 RuleXorSwap::applyOp(PcodeOp *op,Funcdata &data)
+
+{
+  for(int4 i=0;i<2;++i) {
+    Varnode *vn = op->getIn(i);
+    if (!vn->isWritten()) continue;
+    PcodeOp *op2 = vn->getDef();
+    if (op2->code() != CPUI_INT_XOR) continue;
+    Varnode *othervn = op->getIn(1-i);
+    Varnode *vn0 = op2->getIn(0);
+    Varnode *vn1 = op2->getIn(1);
+    if (othervn == vn0 && !vn1->isFree()) {
+      data.opRemoveInput(op, 1);
+      data.opSetOpcode(op, CPUI_COPY);
+      data.opSetInput(op, vn1, 0);
+      return 1;
+    }
+    else if (othervn == vn1 && !vn0->isFree()) {
+      data.opRemoveInput(op, 1);
+      data.opSetOpcode(op, CPUI_COPY);
+      data.opSetInput(op, vn0, 0);
+      return 1;
+    }
+  }
+  return 0;
+}

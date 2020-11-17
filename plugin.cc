@@ -55,6 +55,8 @@
 #include <map>
 #include <set>
 
+//#define DEBUG 1
+
 #include "plugin.hh"
 #include "ast.hh"
 
@@ -353,12 +355,13 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
             }
             return true;
          }
-         case IK_DIVIDE: { //Add eol comment on current line
+         case IK_OEM_2: { // This is key that IDA associates with '/'
+            //Add eol comment on current line
             int x, y;
             if (get_custom_viewer_place(w, false, &x, &y) == NULL) {
                return false;
             }
-//            msg("add comment on line %d\n", y);
+            msg("add comment on line %d\n", y);
             return true;
          }
          case IK_ESCAPE: {
@@ -794,25 +797,29 @@ void map_ghidra_to_ida(Decompiled *dec) {
 }
 
 void decompile_at(ea_t addr, TWidget *w) {
-   string xml;
-   string cfunc;
    func_t *func = get_func(addr);
    Function *ast = NULL;
    if (func) {
       int res = do_decompile(func->start_ea, func->end_ea, &ast);
       if (ast) {
-//         msg("got a Functon tree!\n");
+#ifdef DEBUG
+         msg("got a Functon tree!\n");
+#endif
          Decompiled *dec = new Decompiled(ast, func);
 
          //now try to map ghidra stack variable names to ida stack variable names
-//         msg("mapping ida names to ghidra names\n");
+         msg("mapping ida names to ghidra names\n");
          map_ghidra_to_ida(dec);
 
          vector<string> code;
-//         msg("Generating C code\n");
+#ifdef DEBUG
+         msg("Generating C code\n");
+#endif
          dec->ast->print(&code);
 
-//         msg("Displaying C code\n");
+#ifdef DEBUG
+         msg("Displaying C code\n");
+#endif
          strvec_t *sv = new strvec_t();
          dec->set_ud(sv);
          for (vector<string>::iterator si = code.begin(); si != code.end(); si++) {
@@ -846,7 +853,14 @@ void decompile_at(ea_t addr, TWidget *w) {
          }
          function_map[w] = dec;
       }
-//      msg("do_decompile returned: %d\n%s\n%s\n", res, code.c_str(), cfunc.c_str());
+#ifdef DEBUG
+      msg("do_decompile returned: %d\n", res);
+#endif
+   }
+   else {
+#ifdef DEBUG
+      msg("do_decompile failed to return a function\n");
+#endif
    }
 }
 
@@ -884,6 +898,9 @@ blc_plugmod_t::~blc_plugmod_t(void) {
 
 bool idaapi blc_plugmod_t::run(size_t /*arg*/) {
    ea_t addr = get_screen_ea();
+#ifdef DEBUG
+   msg("decompile_at 0x%llx\n", (uint64_t)addr);
+#endif
    decompile_at(addr);
    return true;
 }
