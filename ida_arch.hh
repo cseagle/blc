@@ -46,7 +46,7 @@ protected:
    virtual void buildLoader(DocumentStorage &store);
 
    // Factory routines for building this architecture
-   virtual Scope *buildGlobalScope(void);       ///< Build the global scope for this executable
+   virtual Scope *buildDatabase(DocumentStorage &store); ///< Build the global scope for this executable
 
    virtual void postSpecFile(void);		///< Let components initialize after Translate is built
 

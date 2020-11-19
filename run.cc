@@ -178,7 +178,7 @@ void add_tracked_reg(TrackedSet &regs, uint64_t offset, uint64_t value, uint32_t
 
 void mips_setup(uint64_t start, uint64_t end) {
    TrackedSet &regs = get_tracked_set(start, end);
-   
+
    //this is very n64 specific
    // this is $t9 - need to do this better
    add_tracked_reg(regs, 0xc8, start, 8);
@@ -251,7 +251,7 @@ void ghidra_term(void) {
 void do_pcode(const Funcdata *fd) {
    //typedef map<SeqNum,PcodeOp *> PcodeOpTree
    /// \brief Start of all (alive) PcodeOp objects sorted by sequence number
-  
+
    PcodeOpTree::const_iterator iter;
    int i = 0;
    for (iter = fd->beginOpAll(); iter != fd->endOpAll(); iter++) {
@@ -296,6 +296,13 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 
       string func_name;
       get_func_name(func_name, start_ea);
+      if (func_name != fd->getName()) {
+         // Function name has changed since the last decompile
+         // We need to flush the old symbol name from Ghidra's database to
+         // force it to request the new name from IDA
+         global->removeSymbolMappings(fd->getSymbol());
+         fd = global->findFunction(addr);
+      }
 
       dmsg("Decompiling %s\n", func_name.c_str());
 
@@ -323,9 +330,9 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
          if (res == 0) {
             dmsg(" (no change)\n");
          }
-         
+
          do_pcode(fd);
-         
+
          stringstream ss;
          arch->print->setIndentIncrement(3);
          arch->print->setOutputStream(&ss);
@@ -339,6 +346,10 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
          arch->print->docFunction(fd);
          arch->print->setXML(false);
          xml = ss.str();
+
+#ifdef DEBUG
+         msg("%s\n", xml.c_str());
+#endif
 
          //print the xml
          Document *doc = xml_tree(ss);

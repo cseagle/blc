@@ -45,7 +45,15 @@ Funcdata::Funcdata(const string &nm,Scope *scope,const Address &addr,FunctionSym
   if (nm.size()==0)
     localmap = (ScopeLocal *)0; // Filled in by restoreXml
   else {
-    ScopeLocal *newMap = new ScopeLocal(stackid,this,glb);
+    uint8 id;
+    if (sym != (FunctionSymbol *)0)
+      id = sym->getId();
+    else {
+      // Missing a symbol, build unique id based on address
+      id = 0x57AB12CD;
+      id = (id << 32) | (addr.getOffset() & 0xffffffff);
+    }
+    ScopeLocal *newMap = new ScopeLocal(id,stackid,this,glb);
     glb->symboltab->attachScope(newMap,scope);		// This may throw and delete newMap
     localmap = newMap;
     funcp.setScope(localmap,baseaddr+ -1);
@@ -421,29 +429,6 @@ FuncCallSpecs *Funcdata::getCallSpecs(const PcodeOp *op) const
   return (FuncCallSpecs *)0;
 }
 
-/// \brief Update CALL PcodeOp properties based on its corresponding call specification
-///
-/// As call specifications for a particular call site are updated, this routine pushes
-/// back properties to the particular CALL op that are relevant for analysis.
-/// \param fc is the call specification
-void Funcdata::updateOpFromSpec(FuncCallSpecs *fc)
-
-{
-  PcodeOp *op = fc->getOp();
-  if (fc->isConstructor())
-    op->setAdditionalFlag(PcodeOp::is_constructor);
-  else
-    op->clearAdditionalFlag(PcodeOp::is_constructor);
-  if (fc->isDestructor())
-    op->setAdditionalFlag(PcodeOp::is_destructor);
-  else
-    op->clearAdditionalFlag(PcodeOp::is_destructor);
-  if (fc->hasThisPointer())
-    op->setAdditionalFlag(PcodeOp::has_thisptr);
-  else
-    op->clearAdditionalFlag(PcodeOp::has_thisptr);
-}
-
 /// \brief Compare call specification objects by call site address
 ///
 /// \param a is the first call specification to compare
@@ -758,7 +743,7 @@ uint8 Funcdata::restoreXml(const Element *el)
     if ((*iter)->getName() == "localdb") {
       if (localmap != (ScopeLocal *)0)
 	throw LowlevelError("Pre-existing local scope when restoring: "+name);
-      ScopeLocal *newMap = new ScopeLocal(stackid,this,glb);
+      ScopeLocal *newMap = new ScopeLocal(id,stackid,this,glb);
       glb->symboltab->restoreXmlScope(*iter,newMap);	// May delete newMap and throw
       localmap = newMap;
     }
@@ -773,7 +758,7 @@ uint8 Funcdata::restoreXml(const Element *el)
     else if ((*iter)->getName() == "prototype") {
       if (localmap == (ScopeLocal *)0) {
 	// If we haven't seen a <localdb> tag yet, assume we have a default local scope
-	ScopeLocal *newMap = new ScopeLocal(stackid,this,glb);
+	ScopeLocal *newMap = new ScopeLocal(id,stackid,this,glb);
 	Scope *scope = glb->symboltab->getGlobalScope();
 	glb->symboltab->attachScope(newMap,scope);	// May delete newMap and throw
 	localmap = newMap;
@@ -786,7 +771,7 @@ uint8 Funcdata::restoreXml(const Element *el)
   }
   if (localmap == (ScopeLocal *)0) { // Seen neither <localdb> or <prototype>
     // This is a function shell, so we provide default locals
-    ScopeLocal *newMap = new ScopeLocal(stackid,this,glb);
+    ScopeLocal *newMap = new ScopeLocal(id,stackid,this,glb);
     Scope *scope = glb->symboltab->getGlobalScope();
     glb->symboltab->attachScope(newMap,scope);		// May delete newMap and throw
     localmap = newMap;

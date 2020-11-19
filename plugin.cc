@@ -70,6 +70,8 @@
 #include <map>
 #include <set>
 
+//#define DEBUG 1
+
 #include "plugin.hh"
 #include "ast.hh"
 
@@ -1250,6 +1252,9 @@ blc_plugmod_t::~blc_plugmod_t(void) {
 
 bool idaapi blc_plugmod_t::run(size_t /*arg*/) {
    ea_t addr = get_screen_ea();
+#ifdef DEBUG
+   msg("decompile_at 0x%llx\n", (uint64_t)addr);
+#endif
    decompile_at(addr);
    return true;
 }

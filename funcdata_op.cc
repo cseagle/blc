@@ -349,8 +349,11 @@ void Funcdata::opInsertAfter(PcodeOp *op,PcodeOp *prev)
   if (prev->isMarker()) {
     if (prev->code() == CPUI_INDIRECT) {
       Varnode *invn = prev->getIn(1);
-      if (invn->getSpace()->getType()==IPTR_IOP)
-	prev = PcodeOp::getOpFromConst(invn->getAddr()); // Store or call
+      if (invn->getSpace()->getType()==IPTR_IOP) {
+	PcodeOp *targOp = PcodeOp::getOpFromConst(invn->getAddr()); // Store or call
+	if (!targOp->isDead())
+	  prev = targOp;
+      }
     }
   }
   list<PcodeOp *>::iterator iter = prev->getBasicIter();
@@ -923,7 +926,7 @@ void Funcdata::overrideFlow(const Address &addr,uint4 type)
   else if (type == Override::CALL)
     op = findPrimaryBranch(iter,enditer,true,false,true);
   else if (type == Override::CALL_RETURN)
-    op = findPrimaryBranch(iter,enditer,true,false,true);
+    op = findPrimaryBranch(iter,enditer,true,true,true);
   else if (type == Override::RETURN)
     op = findPrimaryBranch(iter,enditer,true,true,false);
 

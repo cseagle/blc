@@ -126,6 +126,7 @@ public:
   int4 typeOrderBool(const Datatype &op) const;	///< Order \b this with -op-, treating \e bool data-type as special
   void saveXmlBasic(ostream &s) const;	///< Save basic data-type properties
   void saveXmlRef(ostream &s) const;	///< Write an XML reference of \b this to stream
+  bool isPtrsubMatching(uintb offset) const;	///< Is this data-type suitable as input to a CPUI_PTRSUB op
 };
 
 /// \brief Specifies subfields of a structure or what a pointer points to
@@ -341,7 +342,8 @@ class TypeCode : public Datatype {
 protected:
   friend class TypeFactory;
   FuncProto *proto;		///< If non-null, this describes the prototype of the underlying function
-  void set(ProtoModel *model,
+  TypeFactory *factory;		///< Factory owning \b this
+  void set(TypeFactory *tfact,ProtoModel *model,
 	   Datatype *outtype,const vector<Datatype *> &intypes,
 	   bool dotdotdot,Datatype *voidtype);	///< Establish a function pointer
   virtual void restoreXml(const Element *el,TypeFactory &typegrp);
@@ -350,9 +352,10 @@ public:
   TypeCode(const string &nm);		///< Construct from a name
   int4 compareBasic(const TypeCode *op) const;	///< Compare surface characteristics of two TypeCodes
   const FuncProto *getPrototype(void) const { return proto; }	///< Get the function prototype
-  void setProperties(bool hasThisPtr,bool isConstructor,bool isDestructor);	///< Set additional function properties
+  void setProperties(bool isConstructor,bool isDestructor);	///< Set additional function properties
   virtual ~TypeCode(void);
   virtual void printRaw(ostream &s) const;
+  virtual Datatype *getSubType(uintb off,uintb *newoff) const;
   virtual int4 compare(const Datatype &op,int4 level) const;
   virtual int4 compareDependency(const Datatype &op) const;
   virtual Datatype *clone(void) const { return new TypeCode(*this); }
@@ -431,7 +434,7 @@ public:
 		      const vector<bool> &assignlist,
 		      TypeEnum *te);		///< Set named values for an enumeration
   Datatype *restoreXmlType(const Element *el);	///< Restore Datatype from XML
-  Datatype *restoreXmlTypeWithCodeFlags(const Element *el,bool hasThisPtr,bool isConstructor,bool isDestructor);
+  Datatype *restoreXmlTypeWithCodeFlags(const Element *el,bool isConstructor,bool isDestructor);
   TypeVoid *getTypeVoid(void);					///< Get the "void" data-type
   Datatype *getBaseNoChar(int4 s,type_metatype m);		///< Get atomic type excluding "char"
   Datatype *getBase(int4 s,type_metatype m);			///< Get atomic type

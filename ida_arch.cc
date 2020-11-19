@@ -53,17 +53,15 @@ void ida_arch::postSpecFile(void) {
 */
 }
 
-Scope *ida_arch::buildGlobalScope(void) {
-   Scope *globscope = symboltab->getGlobalScope();
-//   msg("ida_arch::buildGlobalScope (%d)\n", globscope == NULL);
-   if (globscope == NULL) { // Make sure global scope exists
-      globscope = new ida_scope(this);
-      symboltab->attachScope(globscope, NULL);
-   }
+Scope *ida_arch::buildDatabase(DocumentStorage &store) {
+//   msg("ida_arch::buildDatabase\n");
+   symboltab = new Database(this, true);
+   Scope *globscope = new ida_scope(0, this);
+   symboltab->attachScope(globscope, NULL);
    return globscope;
 }
 
 Symbol *ida_arch::getSymbol(const Address &addr) {
-//   msg("ida_arch::getSymbol - 0x%x\n", (uint32_t)addr.getOffset());
+//   msg("ida_arch::getSymbol - 0x%llx\n", (uint64_t)addr.getOffset());
    return NULL;
 }
