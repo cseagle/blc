@@ -1,6 +1,7 @@
 /*
    Source for the blc IdaPro plugin
    Copyright (c) 2019 Chris Eagle
+   Copyright (c) 2020 Alexander Pick
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the Free
@@ -15,6 +16,13 @@
    You should have received a copy of the GNU General Public License along with
    this program; if not, write to the Free Software Foundation, Inc., 59 Temple
    Place, Suite 330, Boston, MA 02111-1307 USA
+
+   Changelog:
+   ----------
+   
+   Changes by Alexander Pick (alx@pwn.su)
+
+   2020-04-28	- Added a selector to correct the return value of blc_init() for IDA 7.5 
 */
 
 #include <iostream>
@@ -39,12 +47,17 @@ using std::map;
 #include "ida_arch.hh"
 #include "ast.hh"
 
-//#define DEBUG 1
+//#define DEBUG_RUN 1
+
+#ifdef DEBUG_RUN
+#define dmsg(x, ...) msg(x, __VA_ARGS__)
+#else
+#define dmsg(x, ...)
+#endif
 
 stringstream *err_stream;
 
-static string sleigh_id;
-ida_arch *arch;  // in lieu of Architecture *IfaceDecompData::conf
+ida_arch *arch;             // in lieu of Architecture *IfaceDecompData::conf
 
 void escape_value(const string &value, string &res) {
    const char *content = value.c_str();
@@ -176,49 +189,53 @@ void mips_setup(uint64_t start, uint64_t end) {
 bool ghidra_init(void) {
    startDecompilerLibrary(ghidra_dir.c_str());
 
-   err_stream = new stringstream();
+    err_stream = new stringstream();
 
-//   IfaceCapability::registerAllCommands(term);  // Register commands for decompiler and all modules
+    //   IfaceCapability::registerAllCommands(term);  // Register commands for decompiler and all modules
 
-   string filename;
-   get_input_file_path(filename);
+    string filename;
+    get_input_file_path(filename);
 
-   get_sleigh_id(sleigh_id);
+    get_sleigh_id(sleigh_id);
+    
+    dmsg("SI: %s", sleigh_id);
 
-   //implement most of IfcLoadFile::execute here since file is
-   //already loaded in IDA
+    //implement most of IfcLoadFile::execute here since file is
+    //already loaded in IDA
 
-   arch = new ida_arch(filename, sleigh_id, err_stream);
+    arch = new ida_arch(filename, sleigh_id, err_stream);
 
-   DocumentStorage store;  // temporary storage for xml docs
+    DocumentStorage store;  // temporary storage for xml docs
 
-   string errmsg;
-   bool iserror = false;
-   try {
-      arch->init(store);
-      //at this point we have arch->context (a ContextInternal) available
-      // we can do things like:
-      // context->setVariableDefault("addrsize",1);  // Address size is 32-bits
-      // context->setVariableDefault("opsize",1);    // Operand size is 32-bits
-      // that make sense for our architecture
-   } catch(XmlError &err) {
-      errmsg = err.explain;
-      iserror = true;
-   } catch(LowlevelError &err) {
-      errmsg = err.explain;
-      iserror = true;
-   }
-   if (iserror) {
-      msg("%s\n", errmsg.c_str());
-      msg("Could not create architecture\n");
-      delete arch;
-      arch = NULL;
-      return false;
-   }
+    string errmsg;
+    bool iserror = false;
+    try {
+        arch->init(store);
+        //at this point we have arch->context (a ContextInternal) available
+        // we can do things like:
+        // context->setVariableDefault("addrsize",1);  // Address size is 32-bits
+        // context->setVariableDefault("opsize",1);    // Operand size is 32-bits
+        // that make sense for our architecture
+    }
+    catch (XmlError & err) {
+        errmsg = err.explain;
+        iserror = true;
+    }
+    catch (LowlevelError & err) {
+        errmsg = err.explain;
+        iserror = true;
+    }
+    if (iserror) {
+        msg("%s\n", errmsg.c_str());
+        msg("Could not create architecture\n");
+        delete arch;
+        arch = NULL;
+        return false;
+    }
 
-   check_err_stream();
+    check_err_stream();
 
-   msg("Ghidra architecture successfully created\n");
+    dmsg("Ghidra architecture successfully created\n");
 
    return true;
 }
@@ -242,10 +259,10 @@ void do_pcode(const Funcdata *fd) {
       const SeqNum &sn = iter->first;
       const PcodeOp *pcode = iter->second;
       ostringstream os;
-      pcode->printRaw(os);
-      msg("%p: %u, (%s / %s): %s\n", (void*)sn.getAddr().getOffset(), sn.getOrder(), pcode->getOpcode()->getName().c_str(), get_opname(pcode->code()), os.str().c_str());
+      pcode->printRaw(os);      
+      dmsg("%p: %u, (%s / %s): %s\n", (void*)sn.getAddr().getOffset(), sn.getOrder(), pcode->getOpcode()->getName().c_str(), get_opname(pcode->code()), os.str().c_str());
    }
-   msg("Found %d PcodeOpTree\n", i);
+   dmsg("Found %d PcodeOpTree\n", i);
 /*
    /// \brief Start of all (alive) PcodeOp objects attached to a specific Address
    PcodeOpTree::const_iterator beginOp(const Address &addr) const { return obank.begin(addr); }
@@ -287,7 +304,7 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
          fd = global->findFunction(addr);
       }
 
-//      msg("Decompiling %s\n", func_name.c_str());
+      dmsg("Decompiling %s\n", func_name.c_str());
 
       arch->clearAnalysis(fd); // Clear any old analysis
 
@@ -302,14 +319,16 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 
       if (res < 0) {
          ostringstream os;
-//         msg("Break at ");
+         dmsg("Break at ");
          arch->allacts.getCurrent()->printState(os);
          msg("%s\n", os.str().c_str());
       }
       else {
-//         msg("Decompilation complete");
+
+         dmsg("Decompilation complete\n");
+         
          if (res == 0) {
-//            msg(" (no change)");
+            dmsg(" (no change)\n");
          }
 
          do_pcode(fd);
@@ -337,22 +356,23 @@ int do_decompile(uint64_t start_ea, uint64_t end_ea, Function **result) {
 
          if (doc) {
             string pretty;
+            
             dump_el(doc->getRoot(), 0, pretty);
-//            msg("%s\n", pretty.c_str());
+
+            //this will dump the xml 
+            //dmsg("%s\n", pretty.c_str());
 
             *result = func_from_xml(doc->getRoot(), start_ea);
-#ifdef DEBUG
-            msg("%s\n", c_code.c_str());
-#endif
+
+            //this will dump the pseudocode
+            //dmsg("%s\n", c_code.c_str());
             delete doc;
          }
       }
       check_err_stream();
    }
    else {
-#ifdef DEBUG
-      msg("Error, no Funcdata at 0x%llx\n", (uint64_t)start_ea);
-#endif
+       dmsg("Error, no Funcdata at 0x%x\n", (uint32_t)start_ea);
    }
    return res;
 }

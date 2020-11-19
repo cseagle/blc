@@ -1,6 +1,7 @@
 /*
    Source for the blc IdaPro plugin
    Copyright (c) 2019 Chris Eagle
+   Copyright (c) 2020 Alexander Pick
 
    This program is free software; you can redistribute it and/or modify it
    under the terms of the GNU General Public License as published by the Free
@@ -36,6 +37,8 @@ using std::vector;
 
 extern string ghidra_dir;
 //extern int blc_index;
+
+extern string sleigh_id;
 
 typedef void (*arch_setup_t)(uint64_t start, uint64_t end);
 typedef map<int,arch_setup_t> arch_map_t;
@@ -105,6 +108,14 @@ void mips_setup(uint64_t start, uint64_t end);
 bool get_value(uint64_t addr, uint64_t *val);
 
 bool get_string(uint64_t addr, string &str);
+
+bool get_str_lit(uint64_t addr, string* str);
+
+bool get_string_ea(uint64_t addr, string* str);
+
+string get_string(const string& name);
+
+bool is_string(const string& name);
 
 bool ghidra_init(void);
 void ghidra_term(void);
