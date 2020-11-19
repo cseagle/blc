@@ -1383,7 +1383,7 @@ void PrintC::resetDefaultsPrintC(void)
   option_convention = true;
   option_hide_exts = true;
   option_inplace_ops = false;
-  option_nocasts = false;
+  option_nocasts = true;
   option_NULL = false;
   option_unplaced = false;
   setCStyleComments();
