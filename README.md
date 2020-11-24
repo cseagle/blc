@@ -21,7 +21,7 @@ all use relative paths to find necessary IDA header files and link libraries.
 Use the include Makefile to build the plugin. You may need to adjust the paths
 that get searched to find your IDA installation (`/Applications/IDA Pro N.NN` is
 assumed on OSX and `/opt/ida-N.NN` is assumed on Linux, were N.NN is derived from
-the name of your IDA SDK directory eg `idasdk73` associates with `7.3` and should
+the name of your IDA SDK directory eg `idasdk75` associates with `7.5` and should
 match your IDA version number). This is required to successfully link the plugin.
 
 ```
@@ -79,8 +79,10 @@ compiled binaries from `<sdkdir>/plugins/blc/bin` to `<idadir>/plugins` (Linux/W
 or `<idadir>/idabin/plugins` (OS X).
 
 The plugin is dependent on Ghira processor specifications which you will need to
-copy over from your own Ghidra installation. Installing Ghidra is a simple matter
-of unzipping the latest Ghidra release, for example: https://ghidra-sre.org/ghidra_9.1_PUBLIC_20191023.zip
+copy over from your own Ghidra installation. 
+
+Installing Ghidra is a simple matter of unzipping the latest Ghidra release, for example:
+<https://ghidra-sre.org/ghidra_9.2_PUBLIC_20201113.zip>
 Within the extracted Ghidra folder, you will find a `Ghidra` subdirectory which,
 in turn, contains a `Processors` subdirectory. The decompiler needs access to
 files contained under `Ghidra/Processors`. By default the plugin looks for the 
@@ -89,6 +91,28 @@ installation folder such that `$GHIDRA_DIR/Ghidra/Processors` exists. If
 `$GHIDRA_DIR` is not set, then the plugin expects to find `<idadir>/plugins/Ghidra/Processors`
 which you may create with a symlink or by copying the approprate directories
 from your Ghidra installation.
+
+### A NOTE ABOUT .SLA FILES
+
+Ghidra uses a language called `sleigh` to define processor modules. Sleigh sources are typically
+saved in .slaspec and .sinc (include) files. A sleigh compiler is used to build the .sla files used
+by Ghidra. A fresh Ghidra installation includes no .sla file. Instead, as the need arises, Ghidra
+generates required .sla files for a given architecture by invoking the sleigh compiler to generate
+the correct .sla file for the architecture. This is why you may have noticed that Ghidra may take a
+while to analyze the first file you open for a given architecture, but seems to be faster for all 
+subsequent files (because the necessary .sla file is already available).
+
+blc needs compiled .sla files for reasons similar to Ghidra's, however blc does not automatically generate
+the .sla files for you. Fortunately a Ghidra install contains the sleigh compiler which can be used to generate
+all of the required .sla files. Before using blc, you will need to do something like the following (assuming you are
+on a Windows box, but similarly by referencing the correct sleigh binary on Linux or Mac):
+
+    $ cd <my ghidra install>
+    $ Ghidra/Features/Decompiler/os/win64/sleigh.exe -a Ghidra/Processors
+
+When finished, all of the required .sla files should have been built in each of the arch specific subdirectories
+under Ghidra/Processors (see Ghidra/Processors/<arch>/data/languages if you are really curious).
+Copying the Processors directory to <idadir>/Ghidra at this point should get you what you need.
 
 ### Pre-built binaries:
 
