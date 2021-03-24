@@ -11,7 +11,8 @@ PLATFORM=$(shell uname | cut -f 1 -d _)
 PROC=blc
 
 ifeq "$(PLATFORM)" "Linux"
-IDA=/opt/ida-$(IDAVER)
+#Make a best guess about where user's ida was installed
+IDA=$(shell if [ -f /opt/ida-$(IDAVER)/libida.so ]; then echo -n /opt/ida-$(IDAVER); else echo -n /opt/idapro-$(IDAVER); fi)
 HAVE_IDA64=$(shell if [ -f $(IDA)/libida64.so ]; then echo -n yes; fi)
 PLATFORM_CFLAGS=-D__LINUX__ -D__UNIX__
 PLATFORM_LDFLAGS=-shared -s

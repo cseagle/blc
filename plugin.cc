@@ -606,6 +606,12 @@ filetype_t inf_get_filetype() {
 
 #endif
 
+#if IDA_SDK_VERSION < 760
+int inf_get_app_bitness() {
+   return inf_is_64bit() ? 64 : (inf_is_32bit() ? 32 : 16);
+}
+#endif
+
 int get_proc_id() {
 #if IDA_SDK_VERSION < 750
    return ph.id;
@@ -622,7 +628,8 @@ bool get_sleigh_id(string &sleigh) {
    }
    compiler_info_t cc;
    inf_get_cc(&cc);
-   bool is_64 = inf_is_64bit();
+   int app_bitness = inf_get_app_bitness();
+   bool is_64 = app_bitness == 64;
    bool is_be = inf_is_be();
    filetype_t ftype = inf_get_filetype();
 
@@ -706,7 +713,7 @@ bool get_sleigh_id(string &sleigh) {
          break;
       case PLFM_386:
          //options include "System Management Mode" "Real Mode" "Protected Mode" "default"
-         sleigh += is_64 ? ":64" : (inf_is_32bit() ? ":32" : ":16");
+         sleigh += is_64 ? ":64" : (app_bitness == 32 ? ":32" : ":16");
          if (sleigh.find(":16") != string::npos) {
             sleigh += ":Real Mode";
          }
