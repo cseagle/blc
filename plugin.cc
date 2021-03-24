@@ -206,6 +206,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
    ea_t addr = 0;
    if (shift == 0) {
       strvec_t *sv = (strvec_t *)ud;
+//      msg("ct_keyboard handling 0x%x\n", key);
       switch (key) {
          case 'G':
             if (ask_addr(&addr, "Jump address")) {
@@ -286,6 +287,40 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                refresh_custom_viewer(w);
                repaint_custom_viewer(w);
                dec->set_ud(sv);
+            }
+            return true;
+         }
+         case 'X': { //Show xrefs for the thing under the cursor
+            Decompiled *dec = function_map[w];
+            qstring word;
+            qstring line;
+            if (get_current_word(w, false, word, &line)) {
+//               msg("Current word is %s\n", word.c_str());
+               string sword(word.c_str());
+               if (!is_reserved(sword)) { //no xrefs to a reserved word
+                  map<string,LocalVar*>::iterator mi = dec->locals.find(sword);
+                  if (mi == dec->locals.end()) { // not a local that we know of
+                     // show xrefs to word/sword
+                     ea_t to = get_name_ea(BADADDR, word.c_str());
+                     if (to != BADADDR) {
+                        ea_t from = choose_xref(to);
+                        if (from != BADADDR) {
+//                           msg("User selected xref 0x%lx\n", from);
+                           ea_t fstart = get_func_start(from);
+                           if (fstart != BADADDR) {
+                              decompile_at(fstart, w);
+                           }
+                           else {
+                              //probably global, but not a function, need
+                              //to jump in disassembly window rather than decompile window
+                           }
+                        }
+                     }
+                  }
+               }
+            }
+            else {
+               msg("No word detected\n");
             }
             return true;
          }

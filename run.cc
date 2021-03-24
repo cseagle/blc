@@ -243,7 +243,9 @@ void do_pcode(const Funcdata *fd) {
       const PcodeOp *pcode = iter->second;
       ostringstream os;
       pcode->printRaw(os);
+#ifdef DEBUG
       msg("%p: %u, (%s / %s): %s\n", (void*)sn.getAddr().getOffset(), sn.getOrder(), pcode->getOpcode()->getName().c_str(), get_opname(pcode->code()), os.str().c_str());
+#endif
    }
    msg("Found %d PcodeOpTree\n", i);
 /*
