@@ -114,6 +114,13 @@ When finished, all of the required .sla files should have been built in each of 
 under Ghidra/Processors (see Ghidra/Processors/<arch>/data/languages if you are really curious).
 Copying the Processors directory to <idadir>/Ghidra at this point should get you what you need.
 
+blc generally uses the latest git version of ghidra available at the time of a blc update. Occasionally changes to
+the sleigh tool will result in the sleigh files from the current release version of Ghidra being outdated
+and unusable. One solution is to build the sleigh component of Ghidra using git sources, then compile the 
+current git .sla files found under ghidra/Ghidra/Processors. Alternatively, the blc project now contains the
+archive blc_sleigh_files.tgz which contains Ghidra/Processors files that are compatible with the latest version of blc.
+Simply extract the contents of this archive, including its directory structure into your <idadir>/plugins directory.
+
 ### Pre-built binaries:
 
 As an alternative to building the plugin yourself, pre-built binaries for 
