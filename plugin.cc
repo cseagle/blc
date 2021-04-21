@@ -448,6 +448,7 @@ static const custom_viewer_handlers_t handlers(
 
 string ghidra_dir;
 
+// maps ida processor id to Ghidra processor name (see Ghidra ldefs files)
 map<int,string> proc_map;
 
 map<int,string> return_reg_map;
@@ -520,7 +521,7 @@ void init_ida_ghidra() {
    //proc_map[PLFM_Z80] = "8085";
    proc_map[PLFM_ARM] = "ARM";
    //proc_map[PLFM_ARM] = "AARCH64";
-   proc_map[PLFM_AVR] = "Atmel";
+   proc_map[PLFM_AVR] = "avr8";
    proc_map[PLFM_CR16] = "CR16";
    proc_map[PLFM_DALVIK] = "Dalvik";
    proc_map[PLFM_JAVA] = "JVM";
@@ -542,7 +543,7 @@ void init_ida_ghidra() {
    //return_reg_map[PLFM_Z80] = "8085";
    return_reg_map[PLFM_ARM] = "r0:r0:r0:r0";
    //return_reg_map[PLFM_ARM] = "r0:r0:r0:r0";
-   return_reg_map[PLFM_AVR] = "Atmel";
+   return_reg_map[PLFM_AVR] = "avr8";
    return_reg_map[PLFM_CR16] = "CR16";
    return_reg_map[PLFM_DALVIK] = "Dalvik";
    return_reg_map[PLFM_JAVA] = "JVM";
@@ -661,7 +662,24 @@ bool get_sleigh_id(string &sleigh) {
          }
          break;
       case PLFM_AVR:
-         sleigh += ":16:default";
+         /*
+         id="avr32:BE:32:default"
+         id="avr8:LE:16:default"
+         id="avr8:LE:16:extended"
+         id="avr8:LE:16:atmega256"
+         id="avr8:LE:24:xmega"
+         */
+         if (app_bitness == 32) {
+            sleigh = "avr32";
+            sleigh += (is_be ? ":BE:32:default" : ":LE:32:default");
+         }
+         else if (app_bitness == 24) { //is this even possible in IDA?
+            sleigh += ":24:xmega";
+         }
+         else {
+            // can we distinguish between extended and atmega256 in ida?
+            sleigh += ":16:default";
+         }
          break;
       case PLFM_CR16:
          sleigh += ":16:default";
