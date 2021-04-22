@@ -116,6 +116,12 @@ clean:
 
 endif
 
+install: all
+	-@echo 'Copying blc plugin(s) to "$(IDA)/plugins"'
+	-@cp $(OUTDIR)/* "$(IDA)/plugins"
+	-@echo 'Extracting Ghidra sleigh files to "$(IDA)/plugins"'
+	-@tar -xf blc_sleigh_files.tgz -C "$(IDA)/plugins"
+
 $(OUTDIR):
 	-@mkdir -p $(OUTDIR)
 
