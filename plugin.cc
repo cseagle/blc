@@ -1250,6 +1250,14 @@ bool get_string(uint64_t addr, string &str) {
    return false;
 }
 
+bool get_string(string name, string &str) {
+   ea_t addr = get_name_ea(BADADDR, name.c_str());
+   if (addr != BADADDR) {
+      return get_string(addr, str);
+   }
+   return false;
+}
+
 //--------------------------------------------------------------------------
 char comment[] = "Ghidra decompiler integration.";
 

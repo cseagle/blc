@@ -1258,8 +1258,21 @@ static Expression *make_unary(const string &op, List::const_iterator &it, List::
          dmsg("made unary expr: %s%s\n", op.c_str(), n->name.c_str());
          string new_name;
          if (simplify_deref(n->name, new_name)) {
-            return make_name(new_name, n->global);
+            Expression *expr = make_name(new_name, n->global);
             delete u;
+            return expr;
+         }
+      }
+   }
+   else if (op == "&") {
+      NameExpr *n = dynamic_cast<NameExpr*>(u->expr);
+      if (n) {
+         dmsg("made unary expr: %s%s\n", op.c_str(), n->name.c_str());
+         string strval;
+         if (get_string(n->name.c_str(), strval)) {
+            dmsg("make_unary became a string: %s\n", strval.c_str());
+            delete u;
+            return new StringLiteral(strval);
          }
       }
    }
