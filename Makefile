@@ -60,9 +60,7 @@ CFLAGS=-Wextra -Os $(PLATFORM_CFLAGS) -D__X64__ -m64  -fPIC
 LDFLAGS=$(PLATFORM_LDFLAGS) -m64
 endif
 
-ifeq ($(shell test $(SDKVER) -gt 72; echo $$?),0)
 CFLAGS+= -std=c++11
-endif
 
 # Destination directory for compiled plugins
 OUTDIR=./bin/
