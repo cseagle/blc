@@ -143,13 +143,13 @@ bool SegmentOp::unify(Funcdata &data,PcodeOp *op,
     innervn = op->getIn(2);
     if (basevn->isConstant())
       basevn = data.newConstant(baseinsize,basevn->getOffset());
-    bindlist[1] = basevn;
+    bindlist[0] = basevn;
   }
   else
-    bindlist[1] = (Varnode *)0;
+    bindlist[0] = (Varnode *)0;
   if (innervn->isConstant())
     innervn = data.newConstant(innerinsize,innervn->getOffset());
-  bindlist[0] = innervn;
+  bindlist[1] = innervn;
   return true;
 }
 
@@ -167,7 +167,6 @@ void SegmentOp::restoreXml(const Element *el)
   injectId = -1;
   baseinsize = 0;
   innerinsize = 0;
-  bool userdefined = false;
   supportsfarpointer = false;
   name = "segment"; 		// Default name, might be overridden by userop attribute
   for(int4 i=0;i<el->getNumAttributes();++i) {
@@ -177,19 +176,16 @@ void SegmentOp::restoreXml(const Element *el)
       supportsfarpointer = true;
     else if (nm == "userop") {	// Based on existing sleigh op
       name = el->getAttributeValue(i);
-      UserPcodeOp *otherop = glb->userops.getOp(name);
-      if (otherop != (UserPcodeOp *)0) {
-	userdefined = true;
-	useropindex = otherop->getIndex();
-	if (dynamic_cast<UnspecializedPcodeOp *>(otherop) == (UnspecializedPcodeOp *)0)
-	  throw LowlevelError("Redefining userop "+name);
-      }
     }
     else
       throw LowlevelError("Bad segmentop tag attribute: "+nm);
   }
-  if (!userdefined)
-    throw LowlevelError("Missing userop attribute in segmentop tag");
+  UserPcodeOp *otherop = glb->userops.getOp(name);
+  if (otherop == (UserPcodeOp *)0)
+    throw LowlevelError("<segmentop> unknown userop " + name);
+  useropindex = otherop->getIndex();
+  if (dynamic_cast<UnspecializedPcodeOp *>(otherop) == (UnspecializedPcodeOp *)0)
+    throw LowlevelError("Redefining userop "+name);
 
   const List &list(el->getChildren());
   List::const_iterator iter;
@@ -216,10 +212,10 @@ void SegmentOp::restoreXml(const Element *el)
       throw LowlevelError("Bad segment pattern tag: "+subel->getName());
   }
   if (injectId < 0)
-    throw LowlevelError("Missing <execute> child in <segmentop> tag");
+    throw LowlevelError("Missing <pcode> child in <segmentop> tag");
   InjectPayload *payload = glb->pcodeinjectlib->getPayload(injectId);
   if (payload->sizeOutput() != 1)
-    throw LowlevelError("<execute> child of <segmentop> tag must declare one <output>");
+    throw LowlevelError("<pcode> child of <segmentop> tag must declare one <output>");
   if (payload->sizeInput() == 1) {
     innerinsize = payload->getInput(0).getSize();
   }
@@ -228,7 +224,7 @@ void SegmentOp::restoreXml(const Element *el)
     innerinsize = payload->getInput(1).getSize();
   }
   else
-    throw LowlevelError("<execute> child of <segmentop> tag must declare one or two <input> tags");
+    throw LowlevelError("<pcode> child of <segmentop> tag must declare one or two <input> tags");
 }
 
 /// \param g is the Architecture owning this set of jump assist scripts

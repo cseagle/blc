@@ -195,10 +195,10 @@ public:
 /// portions are used for temporary storage (not mapped), and what portion is for parameters.
 class ScopeLocal : public ScopeInternal {
   AddrSpace *space;		///< Address space containing the local stack
-  RangeList localRange;		///< The set of addresses that might hold mapped locals (not parameters)
   list<NameRecommend> nameRecommend;	///< Symbol name recommendations for specific addresses
   list<DynamicRecommend> dynRecommend;		///< Symbol name recommendations for dynamic locations
   list<TypeRecommend> typeRecommend;	///< Data-types for specific storage locations
+  uintb deepestParamOffset;		///< Deepest position of a parameter passed (to a called function) on the stack
   bool stackGrowsNegative;	///< Marked \b true if the stack is considered to \e grow towards smaller offsets
   bool rangeLocked;		///< True if the subset of addresses \e mapped to \b this scope has been locked
   bool adjustFit(RangeHint &a) const;	///< Make the given RangeHint fit in the current Symbol map
@@ -208,6 +208,7 @@ class ScopeLocal : public ScopeInternal {
   void fakeInputSymbols(void);		///< Make sure all stack inputs have an associated Symbol
   void addRecommendName(Symbol *sym);	///< Convert the given symbol to a name recommendation
   void collectNameRecs(void);		///< Collect names of unlocked Symbols on the stack
+  void annotateRawStackPtr(void);	///< Generate placeholder PTRSUB off of stack pointer
 public:
   ScopeLocal(uint8 id,AddrSpace *spc,Funcdata *fd,Architecture *g);	///< Constructor
   virtual ~ScopeLocal(void) {}	///< Destructor

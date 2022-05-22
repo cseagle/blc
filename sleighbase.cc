@@ -17,7 +17,7 @@
 
 const int4 SleighBase::SLA_FORMAT_VERSION = 3;
 
-const uintb SleighBase::MAX_UNIQUE_SIZE = 128;
+const uint4 SleighBase::MAX_UNIQUE_SIZE = 128;
 
 int4 SourceFileIndexer::index(const string filename){
 	auto it = fileToIndex.find(filename);
@@ -122,13 +122,6 @@ void SleighBase::reregisterContext(void)
       registerContext(csym->getName(),startbit,endbit);
     }
   }
-}
-
-void SleighBase::addRegister(const string &nm,AddrSpace *base,uintb offset,int4 size)
-
-{
-  VarnodeSymbol *sym = new VarnodeSymbol(nm,base,offset,size);
-  symtab.addSymbol(sym);
 }
 
 const VarnodeData &SleighBase::getRegister(const string &nm) const

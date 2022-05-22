@@ -16,51 +16,112 @@
 #include "fspec.hh"
 #include "funcdata.hh"
 
-void ParamEntry::resolveJoin(void)
+/// \brief Find a ParamEntry matching the given storage Varnode
+///
+/// Search through the list backward.
+/// \param entryList is the list of ParamEntry to search through
+/// \param vn is the storage to search for
+/// \return the matching ParamEntry or null
+const ParamEntry *ParamEntry::findEntryByStorage(const list<ParamEntry> &entryList,const VarnodeData &vn)
 
 {
-  if (spaceid->getType() == IPTR_JOIN) 
-    joinrec = spaceid->getManager()->findJoin(addressbase);
-  else
-    joinrec = (JoinRecord *)0;
+  list<ParamEntry>::const_reverse_iterator iter = entryList.rbegin();
+  for(;iter!=entryList.rend();++iter) {
+    const ParamEntry &entry(*iter);
+    if (entry.spaceid == vn.space && entry.addressbase == vn.offset && entry.size == vn.size) {
+      return &entry;
+    }
+  }
+  return (const ParamEntry *)0;
 }
 
-/// \brief Construct entry from components
-///
-/// \param t is the data-type class (TYPE_UNKNOWN or TYPE_FLOAT)
-/// \param grp is the group id
-/// \param grpsize is the number of consecutive groups occupied
-/// \param loc is the starting address of the memory range
-/// \param sz is the number of bytes in the range
-/// \param mnsz is the smallest size of a logical value
-/// \param align is the alignment (0 means the memory range will hold one parameter exclusively)
-/// \param normalstack is \b true if parameters are allocated from the front of the range
-ParamEntry::ParamEntry(type_metatype t,int4 grp,int4 grpsize,const Address &loc,int4 sz,int4 mnsz,int4 align,bool normalstack)
+/// If the ParamEntry is initialized with a \e join address, cache the join record and
+/// adjust the group and groupsize based on the ParamEntrys being overlapped
+/// \param curList is the current list of ParamEntry
+void ParamEntry::resolveJoin(list<ParamEntry> &curList)
 
 {
-  flags = 0;
-  type = t;
-  group = grp;
+  if (spaceid->getType() != IPTR_JOIN) {
+    joinrec = (JoinRecord *)0;
+    return;
+  }
+  joinrec = spaceid->getManager()->findJoin(addressbase);
+  int4 mingrp = 1000;
+  int4 maxgrp = -1;
+  for(int4 i=0;i<joinrec->numPieces();++i) {
+    const ParamEntry *entry = findEntryByStorage(curList, joinrec->getPiece(i));
+    if (entry != (const ParamEntry *)0) {
+      if (entry->group < mingrp)
+	mingrp = entry->group;
+      int4 max = entry->group + entry->groupsize;
+      if (max > maxgrp)
+	maxgrp = max;
+      // For output <pentry>, if the most signifigant part overlaps with an earlier <pentry>
+      // the least signifigant part is marked for extra checks, and vice versa.
+      flags |= (i==0) ? extracheck_low : extracheck_high;
+    }
+  }
+  if (maxgrp < 0 || mingrp >= 1000)
+    throw LowlevelError("<pentry> join must overlap at least one previous entry");
+  group = mingrp;
+  groupsize = (maxgrp - mingrp);
+  flags |= overlapping;
+  if (groupsize > joinrec->numPieces())
+    throw LowlevelError("<pentry> join must overlap sequential entries");
+}
+
+/// Search for overlaps of \b this with any previous entry.  If an overlap is discovered,
+/// verify the form is correct for the different ParamEntry to share \e group slots and
+/// reassign \b this group.
+/// \param curList is the list of previous entries
+void ParamEntry::resolveOverlap(list<ParamEntry> &curList)
+
+{
+  if (joinrec != (JoinRecord *)0)
+    return;		// Overlaps with join records dealt with in resolveJoin
+  int4 grpsize = 0;
+  int4 mingrp = 1000;
+  int4 maxgrp = -1;
+  list<ParamEntry>::const_iterator iter,enditer;
+  Address addr(spaceid,addressbase);
+  enditer = curList.end();
+  --enditer;		// The last entry is \b this ParamEntry
+  for(iter=curList.begin();iter!=enditer;++iter) {
+    const ParamEntry &entry(*iter);
+    if (!entry.intersects(addr, size)) continue;
+    if (contains(entry)) {	// If this contains the intersecting entry
+      if (entry.isOverlap()) continue;	// Don't count resources (already counted overlapped entry)
+      if (entry.group < mingrp)
+	mingrp = entry.group;
+      int4 max = entry.group + entry.groupsize;
+      if (max > maxgrp)
+	maxgrp = max;
+      grpsize += entry.groupsize;
+      // For output <pentry>, if the most signifigant part overlaps with an earlier <pentry>
+      // the least signifigant part is marked for extra checks, and vice versa.
+      if (addressbase == entry.addressbase)
+	flags |= spaceid->isBigEndian() ? extracheck_low : extracheck_high;
+      else
+	flags |= spaceid->isBigEndian() ? extracheck_high : extracheck_low;
+    }
+    else
+      throw LowlevelError("Illegal overlap of <pentry> in compiler spec");
+  }
+
+  if (grpsize == 0) return;		// No overlaps
+  if (grpsize != (maxgrp - mingrp))
+    throw LowlevelError("<pentry> must overlap sequential entries");
+  group = mingrp;
   groupsize = grpsize;
-  spaceid = loc.getSpace();
-  addressbase = loc.getOffset();
-  size = sz;
-  minsize = mnsz;
-  alignment = align;
-  if (alignment != 0)
-    numslots = size / alignment;
-  else
-    numslots = 1;
-  if (!normalstack)
-    flags |= reverse_stack;
-  resolveJoin();
+  flags |= overlapping;
 }
 
 /// This entry must properly contain the other memory range, and
-/// the entry properties must be compatible.
-/// \param op2 is the other entry to compare with \b this
-/// \return \b true if the other entry is contained
-bool ParamEntry::contains(const ParamEntry &op2) const
+/// the entry properties must be compatible.  A \e join ParamEntry can
+/// subsume another \e join ParamEntry, but we expect the addressbase to be identical.
+/// \param op2 is the given entry to compare with \b this
+/// \return \b true if the given entry is subsumed
+bool ParamEntry::subsumesDefinition(const ParamEntry &op2) const
 
 {
   if ((type!=TYPE_UNKNOWN)&&(op2.type != type)) return false;
@@ -71,6 +132,7 @@ bool ParamEntry::contains(const ParamEntry &op2) const
   return true;
 }
 
+/// We assume a \e join ParamEntry cannot be contained by a single contiguous memory range.
 /// \param addr is the starting address of the potential containing range
 /// \param sz is the number of bytes in the range
 /// \return \b true if the entire ParamEntry fits inside the range
@@ -82,6 +144,38 @@ bool ParamEntry::containedBy(const Address &addr,int4 sz) const
   uintb entryoff = addressbase + size-1;
   uintb rangeoff = addr.getOffset() + sz-1;
   return (entryoff <= rangeoff);
+}
+
+/// If \b this a a \e join, each piece is tested for intersection.
+/// Otherwise, \b this, considered as a single memory, is tested for intersection.
+/// \param addr is the starting address of the given memory range to test against
+/// \param sz is the number of bytes in the given memory range
+/// \return \b true if there is any kind of intersection
+bool ParamEntry::intersects(const Address &addr,int4 sz) const
+
+{
+  uintb rangeend;
+  if (joinrec != (JoinRecord *)0) {
+    rangeend = addr.getOffset() + sz - 1;
+    for(int4 i=0;i<joinrec->numPieces();++i) {
+      const VarnodeData &vdata( joinrec->getPiece(i) );
+      if (addr.getSpace() != vdata.space) continue;
+      uintb vdataend = vdata.offset + vdata.size - 1;
+      if (addr.getOffset() < vdata.offset && rangeend < vdataend)
+	continue;
+      if (addr.getOffset() > vdata.offset && rangeend > vdataend)
+	continue;
+      return true;
+    }
+  }
+  if (spaceid != addr.getSpace()) return false;
+  rangeend = addr.getOffset() + sz - 1;
+  uintb thisend = addressbase + size - 1;
+  if (addr.getOffset() < addressbase && rangeend < thisend)
+    return false;
+  if (addr.getOffset() > addressbase && rangeend > thisend)
+    return false;
+  return true;
 }
 
 /// Check if the given memory range is contained in \b this.
@@ -171,6 +265,28 @@ bool ParamEntry::getContainer(const Address &addr,int4 sz,VarnodeData &res) cons
   if (al2 != 0)
     res.size += (alignment - al2); // Bump up size to nearest alignment
   return true;
+}
+
+/// Test that \b this, as one or more memory ranges, contains the other ParamEntry's memory range.
+/// A \e join ParamEntry cannot be contained by another entry, but it can contain an entry in one
+/// of its pieces.
+/// \param op2 is the given ParamEntry to test for containment
+/// \return \b true if the given ParamEntry is contained
+bool ParamEntry::contains(const ParamEntry &op2) const
+
+{
+  if (op2.joinrec != (JoinRecord *)0) return false;	// Assume a join entry cannot be contained
+  if (joinrec == (JoinRecord *)0) {
+    Address addr(spaceid,addressbase);
+    return op2.containedBy(addr, size);
+  }
+  for(int4 i=0;i<joinrec->numPieces();++i) {
+    const VarnodeData &vdata(joinrec->getPiece(i));
+    Address addr = vdata.getAddr();
+    if (op2.containedBy(addr,vdata.size))
+      return true;
+  }
+  return false;
 }
 
 /// \brief Calculate the type of \e extension to expect for the given logical value
@@ -299,7 +415,9 @@ Address ParamEntry::getAddrBySlot(int4 &slotnum,int4 sz) const
 /// \param el is the root \<pentry> element
 /// \param manage is a manager to resolve address space references
 /// \param normalstack is \b true if the parameters should be allocated from the front of the range
-void ParamEntry::restoreXml(const Element *el,const AddrSpaceManager *manage,bool normalstack)
+/// \param grouped is \b true if \b this will be grouped with other entries
+/// \param curList is the list of ParamEntry defined up to this point
+void ParamEntry::restoreXml(const Element *el,const AddrSpaceManager *manage,bool normalstack,bool grouped,list<ParamEntry> &curList)
 
 {
   flags = 0;
@@ -334,16 +452,6 @@ void ParamEntry::restoreXml(const Element *el,const AddrSpaceManager *manage,boo
     }
     else if (attrname == "metatype")
       type = string2metatype(el->getAttributeValue(i));
-    else if (attrname == "group") { // Override the group
-      istringstream i5(el->getAttributeValue(i));
-      i5.unsetf(ios::dec | ios::hex | ios::oct);
-      i5 >> group;
-    }
-    else if (attrname == "groupsize") {
-      istringstream i6(el->getAttributeValue(i));
-      i6.unsetf(ios::dec | ios::hex | ios::oct);
-      i6 >> groupsize;
-    }
     else if (attrname == "extension") {
       flags &= ~((uint4)(smallsize_zext | smallsize_sext | smallsize_inttype));
       if (el->getAttributeValue(i) == "sign")
@@ -386,36 +494,28 @@ void ParamEntry::restoreXml(const Element *el,const AddrSpaceManager *manage,boo
 	throw LowlevelError("For positive stack growth, <pentry> size must match alignment");
     }
   }
-  resolveJoin();
+  if (grouped)
+    flags |= is_grouped;
+  resolveJoin(curList);
+  resolveOverlap(curList);
 }
 
-/// \brief Check if \b this entry represents a \e joined parameter and requires extra scrutiny
-///
-/// Return value parameter lists allow overlapping entries if one of the overlapping entries
-/// is a \e joined parameter.  In this case the return value recovery logic needs to know
-/// what portion(s) of the joined parameter are overlapped. This method sets flags on \b this
-/// to indicate the overlap.
-/// \param entry is the full parameter list to check for overlaps with \b this
-void ParamEntry::extraChecks(list<ParamEntry> &entry)
+/// Entries within a group must be distinguishable by size or by type.
+/// Throw an exception if the entries aren't distinguishable
+/// \param entry1 is the first ParamEntry to compare
+/// \param entry2 is the second ParamEntry to compare
+void ParamEntry::orderWithinGroup(const ParamEntry &entry1,const ParamEntry &entry2)
 
 {
-  if (joinrec == (JoinRecord *)0) return;		// Nothing to do if not multiprecision
-  if (joinrec->numPieces() != 2) return;
-  const VarnodeData &highPiece(joinrec->getPiece(0));
-  bool seenOnce = false;
-  list<ParamEntry>::const_iterator iter;
-  for(iter=entry.begin();iter!=entry.end();++iter) {	// Search for high piece, used as whole/low in another entry
-    AddrSpace *spc = (*iter).getSpace();
-    uintb off = (*iter).getBase();
-    int4 sz = (*iter).getSize();
-    if ((highPiece.offset == off)&&(highPiece.space == spc)&&(highPiece.size == sz)) {
-      if (seenOnce) throw LowlevelError("Extra check hits twice");
-      seenOnce = true;
-      flags |= extracheck_low;				// If found, we must do extra checks on the low
+  if (entry2.minsize > entry1.size || entry1.minsize > entry2.size)
+    return;
+  if (entry1.type != entry2.type) {
+    if (entry1.type == TYPE_UNKNOWN) {
+      throw LowlevelError("<pentry> tags with a specific type must come before the general type");
     }
+    return;
   }
-  if (!seenOnce)
-    flags |= extracheck_high;				// The default is to do extra checks on the high
+  throw LowlevelError("<pentry> tags within a group must be distinguished by size or type");
 }
 
 ParamListStandard::ParamListStandard(const ParamListStandard &op2)
@@ -427,7 +527,7 @@ ParamListStandard::ParamListStandard(const ParamListStandard &op2)
   maxdelay = op2.maxdelay;
   pointermax = op2.pointermax;
   thisbeforeret = op2.thisbeforeret;
-  nonfloatgroup = op2.nonfloatgroup;
+  resourceTwoStart = op2.resourceTwoStart;
   populateResolver();
 }
 
@@ -471,33 +571,38 @@ int4 ParamListStandard::characterizeAsParam(const Address &loc,int4 size) const
 {
   int4 index = loc.getSpace()->getIndex();
   if (index >= resolverMap.size())
-    return 0;
+    return ParamEntry::no_containment;
   ParamEntryResolver *resolver = resolverMap[index];
   if (resolver == (ParamEntryResolver *)0)
-    return 0;
+    return ParamEntry::no_containment;
   pair<ParamEntryResolver::const_iterator,ParamEntryResolver::const_iterator> iterpair;
   iterpair = resolver->find(loc.getOffset());
-  int4 res = 0;
+  bool resContains = false;
+  bool resContainedBy = false;
   while(iterpair.first != iterpair.second) {
     const ParamEntry *testEntry = (*iterpair.first).getParamEntry();
-    if (testEntry->getMinSize() <= size && testEntry->justifiedContain(loc, size)==0)
-      return 1;
+    int4 off = testEntry->justifiedContain(loc, size);
+    if (off == 0)
+      return ParamEntry::contains_justified;
+    else if (off > 0)
+      resContains = true;
     if (testEntry->isExclusion() && testEntry->containedBy(loc, size))
-      res = 2;
+      resContainedBy = true;
     ++iterpair.first;
   }
-  if (res != 2 && iterpair.first != resolver->end()) {
+  if (resContains) return ParamEntry::contains_unjustified;
+  if (resContainedBy) return ParamEntry::contained_by;
+  if (iterpair.first != resolver->end()) {
     iterpair.second = resolver->find_end(loc.getOffset() + (size-1));
     while(iterpair.first != iterpair.second) {
       const ParamEntry *testEntry = (*iterpair.first).getParamEntry();
       if (testEntry->isExclusion() && testEntry->containedBy(loc, size)) {
-	res = 2;
-	break;
+	return ParamEntry::contained_by;
       }
       ++iterpair.first;
     }
   }
-  return res;
+  return ParamEntry::no_containment;
 }
 
 /// Given the next data-type and the status of previously allocated slots,
@@ -531,51 +636,65 @@ Address ParamListStandard::assignAddress(const Datatype *tp,vector<int4> &status
   return Address();		// Return invalid address to indicated we could not assign anything
 }
 
-void ParamListStandard::assignMap(const vector<Datatype *> &proto,bool isinput,TypeFactory &typefactory,
-				  vector<ParameterPieces> &res) const
+void ParamListStandard::assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const
 
 {
   vector<int4> status(numgroup,0);
 
-  if (isinput) {
-    if (res.size()==2) { // Check for hidden parameters defined by the output list
-      res.back().addr = assignAddress(res.back().type,status); // Reserve first param for hidden ret value
-      res.back().flags |= ParameterPieces::hiddenretparm;
-      if (res.back().addr.isInvalid())
-	throw ParamUnassignedError("Cannot assign parameter address for " + res.back().type->getName());
-    }
-    for(int4 i=1;i<proto.size();++i) {
-      res.emplace_back();
-      if ((pointermax != 0)&&(proto[i]->getSize() > pointermax)) { // Datatype is too big
-	// Assume datatype is stored elsewhere and only the pointer is passed
-	AddrSpace *spc = spacebase;
-	if (spc == (AddrSpace *)0)
-	  spc = typefactory.getArch()->getDefaultDataSpace();
-	int4 pointersize = spc->getAddrSize();
-	int4 wordsize = spc->getWordSize();
-	Datatype *pointertp = typefactory.getTypePointer(pointersize,proto[i],wordsize);
-	res.back().addr = assignAddress(pointertp,status);
-	res.back().type = pointertp;
-	res.back().flags = ParameterPieces::indirectstorage;
-      }
-      else
-	res.back().addr = assignAddress(proto[i],status);
-      if (res.back().addr.isInvalid())
-	throw ParamUnassignedError("Cannot assign parameter address for " + proto[i]->getName());
-      res.back().type = proto[i];
-      res.back().flags = 0;
-    }
+  if (res.size() == 2) {	// Check for hidden parameters defined by the output list
+    res.back().addr = assignAddress(res.back().type,status);	// Reserve first param for hidden ret value
+    res.back().flags |= ParameterPieces::hiddenretparm;
+    if (res.back().addr.isInvalid())
+      throw ParamUnassignedError("Cannot assign parameter address for " + res.back().type->getName());
   }
-  else {
+  for(int4 i=1;i<proto.size();++i) {
     res.emplace_back();
-    if (proto[0]->getMetatype() != TYPE_VOID) {
-      res.back().addr = assignAddress(proto[0],status);
-      if (res.back().addr.isInvalid())
-	throw ParamUnassignedError("Cannot assign parameter address for " + proto[0]->getName());
+    if ((pointermax != 0) && (proto[i]->getSize() > pointermax)) { // Datatype is too big
+      // Assume datatype is stored elsewhere and only the pointer is passed
+      AddrSpace *spc = spacebase;
+      if (spc == (AddrSpace*)0) spc = typefactory.getArch()->getDefaultDataSpace();
+      int4 pointersize = spc->getAddrSize();
+      int4 wordsize = spc->getWordSize();
+      Datatype *pointertp = typefactory.getTypePointer(pointersize,proto[i],wordsize);
+      res.back().addr = assignAddress(pointertp,status);
+      res.back().type = pointertp;
+      res.back().flags = ParameterPieces::indirectstorage;
     }
-    res.back().type = proto[0];
+    else
+      res.back().addr = assignAddress(proto[i],status);
+    if (res.back().addr.isInvalid())
+      throw ParamUnassignedError("Cannot assign parameter address for " + proto[i]->getName());
+    res.back().type = proto[i];
     res.back().flags = 0;
   }
+}
+
+/// From among the ParamEntrys matching the given \e group, return the one that best matches
+/// the given \e metatype attribute. If there are no ParamEntrys in the group, null is returned.
+/// \param grp is the given \e group number
+/// \param prefType is the preferred \e metatype attribute to match
+const ParamEntry *ParamListStandard::selectUnreferenceEntry(int4 grp,type_metatype prefType) const
+
+{
+  int4 bestScore = -1;
+  const ParamEntry *bestEntry = (const ParamEntry *)0;
+  list<ParamEntry>::const_iterator iter;
+  for(iter=entry.begin();iter!=entry.end();++iter) {
+    const ParamEntry *curEntry = &(*iter);
+    if (curEntry->getGroup() != grp) continue;
+    int4 curScore;
+    if (curEntry->getType() == prefType)
+      curScore = 2;
+    else if (prefType == TYPE_UNKNOWN)
+      curScore = 1;
+    else
+      curScore = 0;
+    if (curScore > bestScore) {
+      bestScore = curScore;
+      bestEntry = curEntry;
+    }
+  }
+  return bestEntry;
 }
 
 /// Given a set of \b trials (putative Varnode parameters) as ParamTrial objects,
@@ -587,8 +706,8 @@ void ParamListStandard::buildTrialMap(ParamActive *active) const
 
 {
   vector<const ParamEntry *> hitlist; // List of groups for which we have a representative
-  bool seenfloattrial = false;
-  bool seeninttrial = false;
+  int4 floatCount = 0;
+  int4 intCount = 0;
 
   for(int4 i=0;i<active->getNumTrials();++i) {
     ParamTrial &paramtrial(active->getTrial(i));
@@ -600,10 +719,12 @@ void ParamListStandard::buildTrialMap(ParamActive *active) const
     else {
       paramtrial.setEntry( entrySlot, 0 ); // Keep track of entry recovered for this trial
 
-      if (entrySlot->getType() == TYPE_FLOAT)
-	seenfloattrial = true;
-      else
-	seeninttrial = true;
+      if (paramtrial.isActive()) {
+	if (entrySlot->getType() == TYPE_FLOAT)
+	  floatCount += 1;
+	else
+	  intCount += 1;
+      }
 
       // Make sure we list that the entries group is marked
       int4 grp = entrySlot->getGroup();
@@ -615,22 +736,16 @@ void ParamListStandard::buildTrialMap(ParamActive *active) const
     }
   }
 
-  // Created unreferenced (unref) ParamTrial for any group that we don't have a representive for
+  // Created unreferenced (unref) ParamTrial for any group that we don't have a representative for
   // if that group occurs before one where we do have a representative
 
   for(int4 i=0;i<hitlist.size();++i) {
     const ParamEntry *curentry = hitlist[i];
     
     if (curentry == (const ParamEntry *)0) {
-      list<ParamEntry>::const_iterator iter;
-      for(iter=entry.begin();iter!=entry.end();++iter) {
-	curentry = &(*iter);
-	if (curentry->getGroup() == i) break; // Find first entry of the missing group
-      }
-      if ((!seenfloattrial)&&(curentry->getType()==TYPE_FLOAT))
-	continue;		// Don't fill in unreferenced floats if we haven't seen any floats
-      if ((!seeninttrial)&&(curentry->getType()!=TYPE_FLOAT))
-	continue;		// Don't fill in unreferenced int if all we have seen is floats
+      curentry = selectUnreferenceEntry(i, (floatCount > intCount) ? TYPE_FLOAT : TYPE_UNKNOWN);
+      if (curentry == (const ParamEntry *)0)
+	continue;
       int4 sz = curentry->isExclusion() ? curentry->getSize() : curentry->getAlign();
       int4 nextslot = 0;
       Address addr = curentry->getAddrBySlot(nextslot,sz);
@@ -677,56 +792,133 @@ void ParamListStandard::buildTrialMap(ParamActive *active) const
   active->sortTrials();
 }
 
-/// \brief Calculate the range of floating-point entries within a given set of parameter \e trials
+/// \brief Calculate the range of trials in each of the two resource sections
 ///
-/// The trials must already be mapped, which should put floating-point entries first.
-/// This method calculates the range of floating-point entries and the range of general purpose
-/// entries and passes them back.
+/// The trials must already be mapped, which should put them in group order.  The sections
+/// split at the group given by \b resourceTwoStart.  We pass back the range of trial indices
+/// for each section.  If \b resourceTwoStart is 0, then there is really only one section, and
+/// the empty range [0,0] is passed back for the second section.
 /// \param active is the given set of parameter trials
-/// \param floatstart will pass back the index of the first floating-point trial
-/// \param floatstop will pass back the index (+1) of the last floating-point trial
-/// \param start will pass back the index of the first general purpose trial
-/// \param stop will pass back the index (+1) of the last general purpose trial
-void ParamListStandard::separateFloat(ParamActive *active,int4 &floatstart,int4 &floatstop,int4 &start,int4 &stop) const
+/// \param oneStart will pass back the index of the first trial in the first section
+/// \param oneStop will pass back the index (+1) of the last trial in the first section
+/// \param twoStart will pass back the index of the first trial in the second section
+/// \param twoStop will pass back the index (+1) of the last trial in the second section
+void ParamListStandard::separateSections(ParamActive *active,int4 &oneStart,int4 &oneStop,int4 &twoStart,int4 &twoStop) const
 
 {
   int4 numtrials = active->getNumTrials();
+  if (resourceTwoStart == 0) {
+    // Only one section
+    oneStart = 0;
+    oneStop = numtrials;
+    twoStart = 0;
+    twoStop = 0;
+    return;
+  }
   int4 i=0;
   for(;i<numtrials;++i) {
     ParamTrial &curtrial(active->getTrial(i));
     if (curtrial.getEntry()==(const ParamEntry *)0) continue;
-    if (curtrial.getEntry()->getType()!=TYPE_FLOAT) break;
+    if (curtrial.getEntry()->getGroup() >= resourceTwoStart) break;
   }
-  floatstart = 0;
-  floatstop = i;
-  start = i;
-  stop = numtrials;
+  oneStart = 0;
+  oneStop = i;
+  twoStart = i;
+  twoStop = numtrials;
+}
+
+/// \brief Mark all the trials within the indicated groups as \e not \e used, except for one specified index
+///
+/// Only one trial within an exclusion group can have active use, mark all others as unused.
+/// \param active is the set of trials, which must be sorted on group
+/// \param groupUper is the biggest group number to be marked
+/// \param groupStart is the index of the first trial in the smallest group to be marked
+/// \param index is the specified trial index that is \e not to be marked
+void ParamListStandard::markGroupNoUse(ParamActive *active,int4 groupUpper,int4 groupStart,int4 index)
+
+{
+  int4 numTrials = active->getNumTrials();
+  for(int4 i=groupStart;i<numTrials;++i) {		// Mark entries in the group range as definitely not used
+    if (i == index) continue;		// The trial NOT to mark
+    ParamTrial &othertrial(active->getTrial(i));
+    if (othertrial.isDefinitelyNotUsed()) continue;
+    if (othertrial.getEntry()->getGroup() > groupUpper) break;
+    othertrial.markNoUse();
+  }
+}
+
+/// \brief From among multiple \e inactive trials, select the most likely to be active and mark others as not used
+///
+/// There can be at most one \e inactive trial in an exclusion group for the fill algorithms to work.
+/// Score all the trials and pick the one that is the most likely to actually be an active param.
+/// Mark all the others as definitely not used.
+/// \param active is the sorted set of trials
+/// \param group is the group number
+/// \param groupStart is the index of the first trial in the group
+/// \param prefType is a preferred entry to type to use in scoring
+void ParamListStandard::markBestInactive(ParamActive *active,int4 group,int4 groupStart,type_metatype prefType)
+
+{
+  int4 numTrials = active->getNumTrials();
+  int4 bestTrial = -1;
+  int4 bestScore = -1;
+  for(int4 i=groupStart;i<numTrials;++i) {
+    ParamTrial &trial(active->getTrial(i));
+    if (trial.isDefinitelyNotUsed()) continue;
+    const ParamEntry *entry = trial.getEntry();
+    int4 grp = entry->getGroup();
+    if (grp != group) break;
+    if (entry->getGroupSize() > 1) continue;	// Covering multiple slots automatically give low score
+    int4 score = 0;
+    if (trial.hasAncestorRealistic()) {
+      score += 5;
+      if (trial.hasAncestorSolid())
+	score += 5;
+    }
+    if (entry->getType() == prefType)
+      score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      bestTrial = i;
+    }
+  }
+  if (bestTrial >= 0)
+    markGroupNoUse(active, group, groupStart, bestTrial);
 }
 
 /// \brief Enforce exclusion rules for the given set of parameter trials
 ///
 /// If there are more than one active trials in a single group,
-/// and if that group is an exclusion group, mark all but the first trial to \e inactive.
+/// and if that group is an exclusion group, mark all but the first trial to \e defnouse.
 /// \param active is the set of trials
-void ParamListStandard::forceExclusionGroup(ParamActive *active) const
+void ParamListStandard::forceExclusionGroup(ParamActive *active)
 
 {
-  int4 curupper = -1;
-  bool exclusion = false;
-  int4 numtrials = active->getNumTrials();
-  for(int4 i=0;i<numtrials;++i) {
+  int4 numTrials = active->getNumTrials();
+  int4 curGroup = -1;
+  int4 groupStart = -1;
+  int4 inactiveCount = 0;
+  for(int4 i=0;i<numTrials;++i) {
     ParamTrial &curtrial(active->getTrial(i));
-    if (curtrial.isActive()) {
-      int4 grp = curtrial.getEntry()->getGroup();
-      exclusion = curtrial.getEntry()->isExclusion();
-      if (grp <= curupper) {	// If curtrial's group falls below highest group where we have seen an active
-	if (exclusion)
-	  curtrial.markInactive(); // mark inactive if it is an exclusion group
-      }
-      else
-	curupper = grp + curtrial.getEntry()->getGroupSize() - 1; // This entry covers some number of groups
+    int4 grp = curtrial.getEntry()->getGroup();
+    if (grp != curGroup) {
+      if (inactiveCount > 1)
+	markBestInactive(active, curGroup, groupStart, TYPE_UNKNOWN);
+      curGroup = grp;
+      groupStart = i;
+      inactiveCount = 0;
+    }
+    if (curtrial.isDefinitelyNotUsed() || !curtrial.getEntry()->isExclusion())
+      continue;
+    else if (!curtrial.isActive())
+      inactiveCount += 1;
+    else if (curtrial.isActive()) {
+      int4 groupUpper = grp + curtrial.getEntry()->getGroupSize() - 1; // This entry covers some number of groups
+      markGroupNoUse(active, groupUpper, groupStart, i);
     }
   }
+  if (inactiveCount > 1)
+    markBestInactive(active, curGroup, groupStart, TYPE_UNKNOWN);
 }
 
 /// \brief Mark every trial above the first "definitely not used" as \e inactive.
@@ -736,7 +928,7 @@ void ParamListStandard::forceExclusionGroup(ParamActive *active) const
 /// \param active is the set of trials, which must already be ordered
 /// \param start is the index of the first trial in the range to consider
 /// \param stop is the index (+1) of the last trial in the range to consider
-void ParamListStandard::forceNoUse(ParamActive *active, int4 start, int4 stop) const
+void ParamListStandard::forceNoUse(ParamActive *active, int4 start, int4 stop)
 
 {
   bool seendefnouse = false;
@@ -768,14 +960,17 @@ void ParamListStandard::forceNoUse(ParamActive *active, int4 start, int4 stop) c
 ///
 /// If there is a chain of slots whose length is greater than \b maxchain,
 /// where all trials are \e inactive, mark trials in any later slot as \e inactive.
-/// Mark any \e inactive trials before this (that aren't in a maximal chain)
-/// as active.  Inspection and marking is restricted to a given range of trials
-/// to facilitate separate analysis of floating-point and general-purpose resources.
+/// Mark any \e inactive trials before this (that aren't in a maximal chain) as active.
+/// The parameter entries in the model may be split up into different resource sections,
+/// as in floating-point vs general purpose.  This method must be called on a single
+/// section at a time. The \b start and \b stop indices describe the range of trials
+/// in the particular section.
 /// \param active is the set of trials, which must be sorted
 /// \param maxchain is the maximum number of \e inactive trials to allow in a chain
 /// \param start is the first index in the range of trials to consider
 /// \param stop is the last index (+1) in the range of trials to consider
-void ParamListStandard::forceInactiveChain(ParamActive *active,int4 maxchain,int4 start,int4 stop) const
+/// \param groupstart is the smallest group id in the particular section
+void ParamListStandard::forceInactiveChain(ParamActive *active,int4 maxchain,int4 start,int4 stop,int4 groupstart)
 
 {
   bool seenchain = false;
@@ -783,7 +978,7 @@ void ParamListStandard::forceInactiveChain(ParamActive *active,int4 maxchain,int
   int4 max = -1;
   for(int4 i=start;i<stop;++i) {
     ParamTrial &trial(active->getTrial(i));
-    if (trial.getEntry() == (const ParamEntry *)0) continue; // Already know not used
+    if (trial.isDefinitelyNotUsed()) continue; // Already know not used
     if (!trial.isActive()) {
       if (trial.isUnref()&&active->isRecoverSubcall()) {
 	// If there is no reference to the trial within the function, the only real possibility
@@ -794,10 +989,7 @@ void ParamListStandard::forceInactiveChain(ParamActive *active,int4 maxchain,int
 	  seenchain = true;	// Mark that we have already seen an inactive chain
       }
       if (i==start) {
-	if (trial.getEntry()->getType() == TYPE_FLOAT)
-	  chainlength += (active->getTrial(0).slotGroup()+1);
-	else
-	  chainlength += (trial.slotGroup() - nonfloatgroup + 1);
+	chainlength += (trial.slotGroup() - groupstart + 1);
       }
       else
 	chainlength += trial.slotGroup() - active->getTrial(i-1).slotGroup();
@@ -832,32 +1024,126 @@ void ParamListStandard::calcDelay(void)
   }
 }
 
+/// \brief Internal method for adding a single address range to the ParamEntryResolvers
+///
+/// Specify the contiguous address range, the ParamEntry to map to it, and a position recording
+/// the order in which ranges are added.
+/// \param spc is address space of the memory range
+/// \param first is the starting offset of the memory range
+/// \param last is the ending offset of the memory range
+/// \param paramEntry is the ParamEntry to associate with the memory range
+/// \param position is the ordering position
+void ParamListStandard::addResolverRange(AddrSpace *spc,uintb first,uintb last,ParamEntry *paramEntry,int4 position)
+
+{
+  int4 index = spc->getIndex();
+  while(resolverMap.size() <= index) {
+    resolverMap.push_back((ParamEntryResolver *)0);
+  }
+  ParamEntryResolver *resolver = resolverMap[index];
+  if (resolver == (ParamEntryResolver *)0) {
+    resolver = new ParamEntryResolver();
+    resolverMap[spc->getIndex()] = resolver;
+  }
+  ParamEntryResolver::inittype initData(position,paramEntry);
+  resolver->insert(initData,first,last);
+}
+
 /// Enter all the ParamEntry objects into an interval map (based on address space)
 void ParamListStandard::populateResolver(void)
 
 {
-  int4 maxid = -1;
   list<ParamEntry>::iterator iter;
-  for(iter=entry.begin();iter!=entry.end();++iter) {
-    int4 id = (*iter).getSpace()->getIndex();
-    if (id > maxid)
-      maxid = id;
-  }
-  resolverMap.resize(maxid+1, (ParamEntryResolver *)0);
   int4 position = 0;
   for(iter=entry.begin();iter!=entry.end();++iter) {
     ParamEntry *paramEntry = &(*iter);
-    int4 spaceId = paramEntry->getSpace()->getIndex();
-    ParamEntryResolver *resolver = resolverMap[spaceId];
-    if (resolver == (ParamEntryResolver *)0) {
-      resolver = new ParamEntryResolver();
-      resolverMap[spaceId] = resolver;
+    AddrSpace *spc = paramEntry->getSpace();
+    if (spc->getType() == IPTR_JOIN) {
+      JoinRecord *joinRec = paramEntry->getJoinRecord();
+      for(int4 i=0;i<joinRec->numPieces();++i) {
+	// Individual pieces making up the join are mapped to the ParamEntry
+        const VarnodeData &vData(joinRec->getPiece(i));
+        uintb last = vData.offset + (vData.size - 1);
+        addResolverRange(vData.space,vData.offset,last,paramEntry,position);
+        position += 1;
+      }
     }
-    uintb first = paramEntry->getBase();
-    uintb last = first + (paramEntry->getSize() - 1);
-    ParamEntryResolver::inittype initData(position,paramEntry);
-    position += 1;
-    resolver->insert(initData,first,last);
+    else {
+      uintb first = paramEntry->getBase();
+      uintb last = first + (paramEntry->getSize() - 1);
+      addResolverRange(spc,first,last,paramEntry,position);
+      position += 1;
+    }
+  }
+}
+
+/// \brief Read a \<pentry> tag and add it to \b this list
+///
+/// \param el is the \<pentry element
+/// \param manage is manager for parsing address spaces
+/// \param effectlist holds any passed back effect records
+/// \param groupid is the group to which the new ParamEntry is assigned
+/// \param normalstack is \b true if the parameters should be allocated from the front of the range
+/// \param autokill is \b true if parameters are automatically added to the killedbycall list
+/// \param splitFloat is \b true if floating-point parameters are in their own resource section
+/// \param grouped is \b true if the new ParamEntry is grouped with other entries
+void ParamListStandard::parsePentry(const Element *el,const AddrSpaceManager *manage,vector<EffectRecord> &effectlist,
+				    int4 groupid,bool normalstack,bool autokill,bool splitFloat,bool grouped)
+{
+  entry.emplace_back(groupid);
+  entry.back().restoreXml(el,manage,normalstack,grouped,entry);
+  if (splitFloat) {
+    if (!grouped && entry.back().getType() == TYPE_FLOAT) {
+      if (resourceTwoStart >= 0)
+	throw LowlevelError("parameter list floating-point entries must come first");
+    }
+    else if (resourceTwoStart < 0)
+      resourceTwoStart = groupid; // First time we have seen an integer slot
+  }
+  AddrSpace *spc = entry.back().getSpace();
+  if (spc->getType() == IPTR_SPACEBASE)
+    spacebase = spc;
+  else if (autokill)	// If a register parameter AND we automatically generate killedbycall
+    effectlist.push_back(EffectRecord(entry.back(),EffectRecord::killedbycall));
+
+  int4 maxgroup = entry.back().getGroup() + entry.back().getGroupSize();
+  if (maxgroup > numgroup)
+    numgroup = maxgroup;
+}
+
+/// \brief Read a group of \<pentry> tags that are allocated as a group
+///
+/// All ParamEntry objects will share the same \b group id.
+/// \param el is the \<pentry element
+/// \param manage is manager for parsing address spaces
+/// \param effectlist holds any passed back effect records
+/// \param groupid is the group to which all ParamEntry elements are assigned
+/// \param normalstack is \b true if the parameters should be allocated from the front of the range
+/// \param autokill is \b true if parameters are automatically added to the killedbycall list
+/// \param splitFloat is \b true if floating-point parameters are in their own resource section
+void ParamListStandard::parseGroup(const Element *el,const AddrSpaceManager *manage,vector<EffectRecord> &effectlist,
+				   int4 groupid,bool normalstack,bool autokill,bool splitFloat)
+{
+  const List &flist(el->getChildren());
+  List::const_iterator iter = flist.begin();
+  int4 basegroup = numgroup;
+  ParamEntry *previous1 = (ParamEntry *)0;
+  ParamEntry *previous2 = (ParamEntry *)0;
+  for(;iter!=flist.end();++iter) {
+    const Element *subel = *iter;
+    if (subel->getName() != "pentry")
+      throw LowlevelError("Expected <pentry> child of <group>: " + subel->getName());
+    parsePentry(subel, manage, effectlist, basegroup, normalstack, autokill, splitFloat, true);
+    ParamEntry &pentry( entry.back() );
+    if (pentry.getSpace()->getType() == IPTR_JOIN)
+      throw LowlevelError("<pentry> in the join space not allowed in <group> tag");
+    if (previous1 != (ParamEntry *)0) {
+      ParamEntry::orderWithinGroup(*previous1,pentry);
+      if (previous2 != (ParamEntry *)0)
+	ParamEntry::orderWithinGroup(*previous2,pentry);
+    }
+    previous2 = previous1;
+    previous1 = &pentry;
   }
 }
 
@@ -869,12 +1155,12 @@ void ParamListStandard::fillinMap(ParamActive *active) const
   buildTrialMap(active); // Associate varnodes with sorted list of parameter locations
 
   forceExclusionGroup(active);
-  int4 floatstart,floatstop,start,stop;
-  separateFloat(active,floatstart,floatstop,start,stop);
-  forceNoUse(active,floatstart,floatstop);
-  forceNoUse(active,start,stop);	    // Definitely not used -- overrides active
-  forceInactiveChain(active,2,floatstart,floatstop);	// Chains of inactivity override later actives
-  forceInactiveChain(active,2,start,stop);
+  int4 oneStart,oneStop,twoStart,twoStop;
+  separateSections(active,oneStart,oneStop,twoStart,twoStop);
+  forceNoUse(active,oneStart,oneStop);
+  forceNoUse(active,twoStart,twoStop);	    // Definitely not used -- overrides active
+  forceInactiveChain(active,2,oneStart,oneStop,0);	// Chains of inactivity override later actives
+  forceInactiveChain(active,2,twoStart,twoStop,resourceTwoStart);
 
   // Mark every active trial as used
   for(int4 i=0;i<active->getNumTrials();++i) {
@@ -1024,11 +1310,11 @@ void ParamListStandard::restoreXml(const Element *el,const AddrSpaceManager *man
 				   vector<EffectRecord> &effectlist,bool normalstack)
 
 {
-  int4 lastgroup = -1;
   numgroup = 0;
   spacebase = (AddrSpace *)0;
   pointermax = 0;
   thisbeforeret = false;
+  bool splitFloat = true;		// True if we should split FLOAT entries into their own resource section
   bool autokilledbycall = false;
   for(int4 i=0;i<el->getNumAttributes();++i) {
     const string &attrname( el->getAttributeName(i) );
@@ -1043,33 +1329,20 @@ void ParamListStandard::restoreXml(const Element *el,const AddrSpaceManager *man
     else if (attrname == "killedbycall") {
       autokilledbycall = xml_readbool( el->getAttributeValue(i) );
     }
+    else if (attrname == "separatefloat") {
+      splitFloat = xml_readbool( el->getAttributeValue(i) );
+    }
   }
-  nonfloatgroup = -1;		// We haven't seen any integer slots yet
+  resourceTwoStart = splitFloat ? -1 : 0;
   const List &flist(el->getChildren());
   List::const_iterator fiter;
   for(fiter=flist.begin();fiter!=flist.end();++fiter) {
     const Element *subel = *fiter;
     if (subel->getName() == "pentry") {
-      entry.emplace_back(numgroup);
-      entry.back().restoreXml(subel,manage,normalstack);
-      if (entry.back().getType()==TYPE_FLOAT) {
-	  if (nonfloatgroup >= 0)
-	    throw LowlevelError("parameter list floating-point entries must come first");
-      }
-      else if (nonfloatgroup < 0)
-	nonfloatgroup = numgroup; // First time we have seen an integer slot
-      AddrSpace *spc = entry.back().getSpace();
-      if (spc->getType() == IPTR_SPACEBASE)
-	spacebase = spc;
-      else if (autokilledbycall)	// If a register parameter AND we automatically generate killedbycall
-	effectlist.push_back(EffectRecord(entry.back(),EffectRecord::killedbycall));
-
-      int4 maxgroup = entry.back().getGroup() + entry.back().getGroupSize();
-      if (maxgroup > numgroup)
-	numgroup = maxgroup;
-      if (entry.back().getGroup() < lastgroup)
-	throw LowlevelError("pentrys must come in group order");
-      lastgroup = entry.back().getGroup();
+      parsePentry(subel, manage, effectlist, numgroup, normalstack, autokilledbycall, splitFloat, false);
+    }
+    else if (subel->getName() == "group") {
+      parseGroup(subel, manage, effectlist, numgroup, normalstack, autokilledbycall, splitFloat);
     }
   }
   calcDelay();
@@ -1083,40 +1356,21 @@ ParamList *ParamListStandard::clone(void) const
   return res;
 }
 
-void ParamListStandardOut::assignMap(const vector<Datatype *> &proto,bool isinput,
-				     TypeFactory &typefactory,vector<ParameterPieces> &res) const
+void ParamListRegisterOut::assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const
+
 {
   vector<int4> status(numgroup,0);
-
-  // This is always an output list so we ignore -isinput-
   res.emplace_back();
+  if (proto[0]->getMetatype() != TYPE_VOID) {
+    res.back().addr = assignAddress(proto[0],status);
+    if (res.back().addr.isInvalid())
+      throw ParamUnassignedError("Cannot assign parameter address for " + proto[0]->getName());
+  }
   res.back().type = proto[0];
   res.back().flags = 0;
-  if (proto[0]->getMetatype() == TYPE_VOID) {
-    return;			// Leave the address as invalid
-  }
-  res.back().addr = assignAddress(proto[0],status);
-  if (res.back().addr.isInvalid()) { // Could not assign an address (too big)
-    AddrSpace *spc = spacebase;
-    if (spc == (AddrSpace *)0)
-      spc = typefactory.getArch()->getDefaultDataSpace();
-    int4 pointersize = spc->getAddrSize();
-    int4 wordsize = spc->getWordSize();
-    Datatype *pointertp = typefactory.getTypePointer(pointersize, proto[0], wordsize);
-    res.back().addr = assignAddress(pointertp,status);
-    if (res.back().addr.isInvalid())
-      throw ParamUnassignedError("Cannot assign return value as a pointer");
-    res.back().type = pointertp;
-    res.back().flags = ParameterPieces::indirectstorage;
-
-    res.emplace_back();			// Add extra storage location in the input params
-    res.back().type = pointertp;	// that holds a pointer to where the return value should be stored
-    // leave its address invalid, to be filled in by the input list assignMap
-    res.back().flags = ParameterPieces::hiddenretparm; // Mark it as special
-  }
 }
 
-void ParamListStandardOut::fillinMap(ParamActive *active) const
+void ParamListRegisterOut::fillinMap(ParamActive *active) const
 
 {
   if (active->getNumTrials() == 0) return; // No trials to check
@@ -1197,7 +1451,7 @@ void ParamListStandardOut::fillinMap(ParamActive *active) const
   }
 }
 
-bool ParamListStandardOut::possibleParam(const Address &loc,int4 size) const
+bool ParamListRegisterOut::possibleParam(const Address &loc,int4 size) const
 
 {
   list<ParamEntry>::const_iterator iter;
@@ -1208,20 +1462,10 @@ bool ParamListStandardOut::possibleParam(const Address &loc,int4 size) const
   return false;
 }
 
-void ParamListStandardOut::restoreXml(const Element *el,const AddrSpaceManager *manage,vector<EffectRecord> &effectlist,bool normalstack)
+ParamList *ParamListRegisterOut::clone(void) const
 
 {
-  ParamListStandard::restoreXml(el,manage,effectlist,normalstack);
-  // Check for double precision entries
-  list<ParamEntry>::iterator iter;
-  for(iter=entry.begin();iter!=entry.end();++iter)
-    (*iter).extraChecks(entry);
-}
-
-ParamList *ParamListStandardOut::clone(void) const
-
-{
-  ParamList *res = new ParamListStandardOut(*this);
+  ParamList *res = new ParamListRegisterOut(*this);
   return res;
 }
 
@@ -1252,6 +1496,65 @@ ParamList *ParamListRegister::clone(void) const
   return res;
 }
 
+void ParamListStandardOut::assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const
+
+{
+  vector<int4> status(numgroup,0);
+
+  res.emplace_back();
+  res.back().type = proto[0];
+  res.back().flags = 0;
+  if (proto[0]->getMetatype() == TYPE_VOID) {
+    return;			// Leave the address as invalid
+  }
+  res.back().addr = assignAddress(proto[0],status);
+  if (res.back().addr.isInvalid()) { // Could not assign an address (too big)
+    AddrSpace *spc = spacebase;
+    if (spc == (AddrSpace *)0)
+      spc = typefactory.getArch()->getDefaultDataSpace();
+    int4 pointersize = spc->getAddrSize();
+    int4 wordsize = spc->getWordSize();
+    Datatype *pointertp = typefactory.getTypePointer(pointersize, proto[0], wordsize);
+    res.back().addr = assignAddress(pointertp,status);
+    if (res.back().addr.isInvalid())
+      throw ParamUnassignedError("Cannot assign return value as a pointer");
+    res.back().type = pointertp;
+    res.back().flags = ParameterPieces::indirectstorage;
+
+    res.emplace_back();			// Add extra storage location in the input params
+    res.back().type = pointertp;	// that holds a pointer to where the return value should be stored
+    // leave its address invalid, to be filled in by the input list assignMap
+    res.back().flags = ParameterPieces::hiddenretparm; // Mark it as special
+  }
+}
+
+void ParamListStandardOut::restoreXml(const Element *el,const AddrSpaceManager *manage,vector<EffectRecord> &effectlist,bool normalstack)
+
+{
+  ParamListRegisterOut::restoreXml(el,manage,effectlist,normalstack);
+  // Check for double precision entries
+  list<ParamEntry>::iterator iter;
+  ParamEntry *previous1 = (ParamEntry *)0;
+  ParamEntry *previous2 = (ParamEntry *)0;
+  for(iter=entry.begin();iter!=entry.end();++iter) {
+    ParamEntry &curEntry(*iter);
+    if (previous1 != (ParamEntry *)0) {
+      ParamEntry::orderWithinGroup(*previous1, curEntry);
+      if (previous2 != (ParamEntry *)0)
+	ParamEntry::orderWithinGroup(*previous2, curEntry);
+    }
+    previous2 = previous1;
+    previous1 = &curEntry;
+  }
+}
+
+ParamList *ParamListStandardOut::clone(void) const
+
+{
+  ParamList *res = new ParamListStandardOut( *this );
+  return res;
+}
+
 /// The given set of parameter entries are folded into \b this set.
 /// Duplicate entries are eliminated. Containing entries subsume what
 /// they contain.
@@ -1273,11 +1576,11 @@ void ParamListMerged::foldIn(const ParamListStandard &op2)
     int4 typeint = 0;
     list<ParamEntry>::iterator iter;
     for(iter=entry.begin();iter!=entry.end();++iter) {
-      if ((*iter).contains(opentry)) {
+      if ((*iter).subsumesDefinition(opentry)) {
 	typeint = 2;
 	break;
       }
-      if (opentry.contains( *iter )) {
+      if (opentry.subsumesDefinition( *iter )) {
 	typeint = 1;
 	break;
       }
@@ -1548,16 +1851,17 @@ int4 ParamActive::getNumUsed(void) const
   return count;
 }
 
+const string FspecSpace::NAME = "fspec";
+
 /// Constructor for the \b fspec space.
 /// There is only one such space, and it is considered
 /// internal to the model, i.e. the Translate engine should never
 /// generate addresses in this space.
 /// \param m is the associated address space manager
 /// \param t is the associated processor translator
-/// \param nm is the name of the space (always \b fspec)
 /// \param ind is the index associated with the space
-FspecSpace::FspecSpace(AddrSpaceManager *m,const Translate *t,const string &nm,int4 ind)
-  : AddrSpace(m,t,IPTR_FSPEC,nm,sizeof(void *),1,ind,0,1)
+FspecSpace::FspecSpace(AddrSpaceManager *m,const Translate *t,int4 ind)
+  : AddrSpace(m,t,IPTR_FSPEC,NAME,sizeof(void *),1,ind,0,1)
 {
   clearFlags(heritaged|does_deadcode|big_endian);
   if (HOST_ENDIAN==1)		// Endianness always set by host
@@ -1628,9 +1932,9 @@ void FspecSpace::restoreXml(const Element *el)
 EffectRecord::EffectRecord(const Address &addr,int4 size)
 
 {
-  address.space = addr.getSpace();
-  address.offset = addr.getOffset();
-  address.size = size;
+  range.space = addr.getSpace();
+  range.offset = addr.getOffset();
+  range.size = size;
   type = unknown_effect;
 }
 
@@ -1639,9 +1943,9 @@ EffectRecord::EffectRecord(const Address &addr,int4 size)
 EffectRecord::EffectRecord(const ParamEntry &entry,uint4 t)
 
 {
-  address.space = entry.getSpace();
-  address.offset = entry.getBase();
-  address.size = entry.getSize();
+  range.space = entry.getSpace();
+  range.offset = entry.getBase();
+  range.size = entry.getSize();
   type = t;
 }
 
@@ -1650,7 +1954,7 @@ EffectRecord::EffectRecord(const ParamEntry &entry,uint4 t)
 EffectRecord::EffectRecord(const VarnodeData &data,uint4 t)
 
 {
-  address = data;
+  range = data;
   type = t;
 }
 
@@ -1659,9 +1963,9 @@ EffectRecord::EffectRecord(const VarnodeData &data,uint4 t)
 void EffectRecord::saveXml(ostream &s) const
 
 {
-  Address addr(address.space,address.offset);
+  Address addr(range.space,range.offset);
   if ((type == unaffected)||(type == killedbycall)||(type == return_address))
-    addr.saveXml(s,address.size);
+    addr.saveXml(s,range.size);
   else
     throw LowlevelError("Bad EffectRecord type");
 }
@@ -1674,7 +1978,7 @@ void EffectRecord::restoreXml(uint4 grouptype,const Element *el,const AddrSpaceM
 
 {
   type = grouptype;
-  address.restoreXml(el,manage);
+  range.restoreXml(el,manage);
 }
 
 void ProtoModel::defaultLocalRange(void)
@@ -1746,7 +2050,7 @@ void ProtoModel::buildParamList(const string &strategy)
   }
   else if (strategy == "register") {
     input = new ParamListRegister();
-    output = new ParamListStandardOut();
+    output = new ParamListRegisterOut();
   }
   else
     throw LowlevelError("Unknown strategy type: "+strategy);
@@ -1847,7 +2151,7 @@ void ProtoModel::assignParameterStorage(const vector<Datatype *> &typelist,vecto
 {
   if (ignoreOutputError) {
     try {
-      output->assignMap(typelist,false,*glb->types,res);
+      output->assignMap(typelist,*glb->types,res);
     }
     catch(ParamUnassignedError &err) {
       res.clear();
@@ -1858,9 +2162,9 @@ void ProtoModel::assignParameterStorage(const vector<Datatype *> &typelist,vecto
     }
   }
   else {
-    output->assignMap(typelist,false,*glb->types,res);
+    output->assignMap(typelist,*glb->types,res);
   }
-  input->assignMap(typelist,true,*glb->types,res);
+  input->assignMap(typelist,*glb->types,res);
 }
 
 /// \brief Look up an effect from the given EffectRecord list
@@ -1881,7 +2185,7 @@ uint4 ProtoModel::lookupEffect(const vector<EffectRecord> &efflist,const Address
 
   vector<EffectRecord>::const_iterator iter;
 
-  iter = upper_bound(efflist.begin(),efflist.end(),cur);
+  iter = upper_bound(efflist.begin(),efflist.end(),cur,EffectRecord::compareByAddress);
   // First element greater than cur  (address must be greater)
   // go back one more, and we get first el less or equal to cur
   if (iter==efflist.begin()) return EffectRecord::unknown_effect; // Can't go back one
@@ -1894,6 +2198,44 @@ uint4 ProtoModel::lookupEffect(const vector<EffectRecord> &efflist,const Address
   if ((where>=0)&&(where+size<=sz))
     return (*iter).getType();
   return EffectRecord::unknown_effect;
+}
+
+/// \brief Look up a particular EffectRecord from a given list by its Address and size
+///
+/// The index of the matching EffectRecord from the given list is returned.  Only the first
+/// \e listSize elements are examined, which much be sorted by Address.
+/// If no matching range exists, a negative number is returned.
+///   - -1 if the Address and size don't overlap any other EffectRecord
+///   - -2 if there is overlap with another EffectRecord
+///
+/// \param efflist is the given list
+/// \param listSize is the number of records in the list to search through
+/// \param addr is the starting Address of the record to find
+/// \param size is the size of the record to find
+/// \return the index of the matching record or a negative number
+int4 ProtoModel::lookupRecord(const vector<EffectRecord> &efflist,int4 listSize,
+			      const Address &addr,int4 size)
+{
+  if (listSize == 0) return -1;
+  EffectRecord cur(addr,size);
+
+  vector<EffectRecord>::const_iterator begiter = efflist.begin();
+  vector<EffectRecord>::const_iterator enditer = begiter + listSize;
+  vector<EffectRecord>::const_iterator iter;
+
+  iter = upper_bound(begiter,enditer,cur,EffectRecord::compareByAddress);
+  // First element greater than cur  (address must be greater)
+  // go back one more, and we get first el less or equal to cur
+  if (iter==efflist.begin()) {
+    Address closeAddr = (*iter).getAddress();
+    return (closeAddr.overlap(0,addr,size) < 0) ? -1 : -2;
+  }
+  --iter;
+  Address closeAddr =(*iter).getAddress();
+  int4 sz = (*iter).getSize();
+  if (addr == closeAddr && size == sz)
+    return iter - begiter;
+  return (addr.overlap(0,closeAddr,sz) < 0) ? -1 : -2;
 }
 
 /// The model is searched for an EffectRecord matching the given range
@@ -2054,7 +2396,7 @@ void ProtoModel::restoreXml(const Element *el)
     // Provide the default return address, if there isn't a specific one for the model
     effectlist.push_back(EffectRecord(glb->defaultReturnAddr,EffectRecord::return_address));
   }
-  sort(effectlist.begin(),effectlist.end());
+  sort(effectlist.begin(),effectlist.end(),EffectRecord::compareByAddress);
   sort(likelytrash.begin(),likelytrash.end());
   if (!sawlocalrange)
     defaultLocalRange();
@@ -2151,17 +2493,18 @@ void ProtoModelMerged::intersectEffects(const vector<EffectRecord> &efflist)
     const EffectRecord &eff1( effectlist[i] );
     const EffectRecord &eff2( efflist[j] );
 
-    if (eff1 < eff2)
+    if (EffectRecord::compareByAddress(eff1, eff2))
       i += 1;
-    else if (eff2 < eff1)
+    else if (EffectRecord::compareByAddress(eff2, eff1))
       j += 1;
     else {
-      newlist.push_back(eff1);
+      if (eff1 == eff2)
+	newlist.push_back(eff1);
       i += 1;
       j += 1;
     }
   }
-  effectlist = newlist;
+  effectlist.swap(newlist);
 }
 
 /// The \e likely-trash locations are intersected. Anything in \b this that is not also in the
@@ -2506,7 +2849,7 @@ ProtoParameter *ProtoStoreSymbol::setInput(int4 i, const string &nm,const Parame
 
 {
   ParameterSymbol *res = getSymbolBacked(i);
-  res->sym = scope->getCategorySymbol(0,i);
+  res->sym = scope->getCategorySymbol(Symbol::function_parameter,i);
   SymbolEntry *entry;
   Address usepoint;
 
@@ -2523,7 +2866,7 @@ ProtoParameter *ProtoStoreSymbol::setInput(int4 i, const string &nm,const Parame
     if (scope->discoverScope(pieces.addr,pieces.type->getSize(),usepoint) == (Scope *)0)
       usepoint = restricted_usepoint; 
     res->sym = scope->addSymbol(nm,pieces.type,pieces.addr,usepoint)->getSymbol();
-    scope->setCategory(res->sym,0,i);
+    scope->setCategory(res->sym,Symbol::function_parameter,i);
     if (isindirect || ishidden) {
       uint4 mirror = 0;
       if (isindirect)
@@ -2556,17 +2899,17 @@ ProtoParameter *ProtoStoreSymbol::setInput(int4 i, const string &nm,const Parame
 void ProtoStoreSymbol::clearInput(int4 i)
 
 {
-  Symbol *sym = scope->getCategorySymbol(0,i);
+  Symbol *sym = scope->getCategorySymbol(Symbol::function_parameter,i);
   if (sym != (Symbol *)0) {
-    scope->setCategory(sym,-1,0); // Remove it from category list
+    scope->setCategory(sym,Symbol::no_category,0); // Remove it from category list
     scope->removeSymbol(sym);	// Remove it altogether
   }
   // Renumber any category 0 symbol with index greater than i
-  int4 sz = scope->getCategorySize(0);
+  int4 sz = scope->getCategorySize(Symbol::function_parameter);
   for(int4 j=i+1;j<sz;++j) {
-    sym = scope->getCategorySymbol(0,j);
+    sym = scope->getCategorySymbol(Symbol::function_parameter,j);
     if (sym != (Symbol *)0)
-      scope->setCategory(sym,0,j-1);
+      scope->setCategory(sym,Symbol::function_parameter,j-1);
   }
 }
 
@@ -2579,13 +2922,13 @@ void ProtoStoreSymbol::clearAllInputs(void)
 int4 ProtoStoreSymbol::getNumInputs(void) const
 
 {
-  return scope->getCategorySize(0);
+  return scope->getCategorySize(Symbol::function_parameter);
 }
 
 ProtoParameter *ProtoStoreSymbol::getInput(int4 i)
 
 {
-  Symbol *sym = scope->getCategorySymbol(0,i);
+  Symbol *sym = scope->getCategorySymbol(Symbol::function_parameter,i);
   if (sym == (Symbol *)0)
     return (ProtoParameter *)0;
   ParameterSymbol *res = getSymbolBacked(i);
@@ -2918,6 +3261,126 @@ void FuncProto::updateThisPointer(void)
   param->setThisPointer(true);
 }
 
+/// If the \e effectlist for \b this is non-empty, it contains the complete set of
+/// EffectRecords.  Save just those that override the underlying list from ProtoModel
+/// \param s is the stream to write to
+void FuncProto::saveEffectXml(ostream &s) const
+
+{
+  if (effectlist.empty()) return;
+  vector<const EffectRecord *> unaffectedList;
+  vector<const EffectRecord *> killedByCallList;
+  const EffectRecord *retAddr = (const EffectRecord *)0;
+  for(vector<EffectRecord>::const_iterator iter=effectlist.begin();iter!=effectlist.end();++iter) {
+    const EffectRecord &curRecord( *iter );
+    uint4 type = model->hasEffect(curRecord.getAddress(), curRecord.getSize());
+    if (type == curRecord.getType()) continue;
+    if (curRecord.getType() == EffectRecord::unaffected)
+      unaffectedList.push_back(&curRecord);
+    else if (curRecord.getType() == EffectRecord::killedbycall)
+      killedByCallList.push_back(&curRecord);
+    else if (curRecord.getType() == EffectRecord::return_address)
+      retAddr = &curRecord;
+  }
+  if (!unaffectedList.empty()) {
+    s << "  <unaffected>\n";
+    for(int4 i=0;i<unaffectedList.size();++i) {
+      s << "    ";
+      unaffectedList[i]->saveXml(s);
+      s << '\n';
+    }
+    s << "  </unaffected>\n";
+  }
+  if (!killedByCallList.empty()) {
+    s << "  <killedbycall>\n";
+    for(int4 i=0;i<killedByCallList.size();++i) {
+      s << "    ";
+      killedByCallList[i]->saveXml(s);
+      s << '\n';
+    }
+    s << "  </killedbycall>\n";
+  }
+  if (retAddr != (const EffectRecord *)0) {
+    s << "  <returnaddress>\n    ";
+    retAddr->saveXml(s);
+    s << "\n  </returnaddress>\n";
+  }
+}
+
+/// If the -likelytrash- list is not empty it overrides the underlying ProtoModel's list.
+/// Write any VarnodeData that does not appear in the ProtoModel to the XML stream.
+/// \param s is the stream to write to
+void FuncProto::saveLikelyTrashXml(ostream &s) const
+
+{
+  if (likelytrash.empty()) return;
+  vector<VarnodeData>::const_iterator iter1,iter2;
+  iter1 = model->trashBegin();
+  iter2 = model->trashEnd();
+  s << "  <likelytrash>\n";
+  for(vector<VarnodeData>::const_iterator iter=likelytrash.begin();iter!=likelytrash.end();++iter) {
+    const VarnodeData &cur(*iter);
+    if (binary_search(iter1,iter2,cur)) continue;	// Already exists in ProtoModel
+    s << "    <addr";
+    cur.space->saveXmlAttributes(s,cur.offset,cur.size);
+    s << "/>\n";
+  }
+  s << "  </likelytrash>\n";
+}
+
+/// EffectRecords read into \e effectlist by restoreXml() override the list from ProtoModel.
+/// If this list is not empty, set up \e effectlist as a complete override containing
+/// all EffectRecords from ProtoModel plus all the overrides.
+void FuncProto::restoreEffectXml(void)
+
+{
+  if (effectlist.empty()) return;
+  vector<EffectRecord> tmpList;
+  tmpList.swap(effectlist);
+  for(vector<EffectRecord>::const_iterator iter=model->effectBegin();iter!=model->effectEnd();++iter) {
+    effectlist.push_back(*iter);
+  }
+  bool hasNew = false;
+  int4 listSize = effectlist.size();
+  for(vector<EffectRecord>::const_iterator iter=tmpList.begin();iter!=tmpList.end();++iter) {
+    const EffectRecord &curRecord( *iter );
+    int4 off = ProtoModel::lookupRecord(effectlist, listSize, curRecord.getAddress(), curRecord.getSize());
+    if (off == -2)
+      throw LowlevelError("Partial overlap of prototype override with existing effects");
+    else if (off >= 0) {
+      // Found matching record, change its type
+      effectlist[off] = curRecord;
+    }
+    else {
+      effectlist.push_back(curRecord);
+      hasNew = true;
+    }
+  }
+  if (hasNew)
+    sort(effectlist.begin(),effectlist.end(),EffectRecord::compareByAddress);
+}
+
+/// VarnodeData read into \e likelytrash by restoreXml() are additional registers over
+/// what is already in ProtoModel.  Make \e likelytrash in \b this a complete list by
+/// merging in everything from ProtoModel.
+void FuncProto::restoreLikelyTrashXml(void)
+
+{
+  if (likelytrash.empty()) return;
+  vector<VarnodeData> tmpList;
+  tmpList.swap(likelytrash);
+  vector<VarnodeData>::const_iterator iter1,iter2;
+  iter1 = model->trashBegin();
+  iter2 = model->trashEnd();
+  for(vector<VarnodeData>::const_iterator iter=iter1;iter!=iter2;++iter)
+    likelytrash.push_back(*iter);
+  for(vector<VarnodeData>::const_iterator iter=tmpList.begin();iter!=tmpList.end();++iter) {
+    if (!binary_search(iter1,iter2,*iter))
+      likelytrash.push_back(*iter);		// Add in the new register
+  }
+  sort(likelytrash.begin(),likelytrash.end());
+}
+
 /// Prepend the indicated number of input parameters to \b this.
 /// The new parameters have a data-type of xunknown4. If they were
 /// originally locked, the existing parameters are preserved.
@@ -3174,17 +3637,20 @@ void FuncProto::setOutputLock(bool val)
   store->getOutput()->setTypeLock(val);
 }
 
-/// This value can be used as a hint as to how much of the return value is important and
-/// is used to inform the dead code \e consume algorithm.
-/// \param val is the estimated number of bytes or 0
-/// \return \b true if the value was changed
+/// Provide a hint as to how many bytes of the return value are important.
+/// The smallest hint is used to inform the dead-code removal algorithm.
+/// \param val is the hint (number of bytes or 0 for all bytes)
+/// \return \b true if the smallest hint has changed
 bool FuncProto::setReturnBytesConsumed(int4 val)
 
 {
-  int4 oldVal = returnBytesConsumed;
-  if (oldVal == 0 || val < oldVal)
+  if (val == 0)
+    return false;
+  if (returnBytesConsumed == 0 || val < returnBytesConsumed) {
     returnBytesConsumed = val;
-  return (oldVal != val);
+    return true;
+  }
+  return false;
 }
 
 /// \brief Assuming \b this prototype is locked, calculate the \e extrapop
@@ -3469,23 +3935,22 @@ vector<EffectRecord>::const_iterator FuncProto::effectEnd(void) const
   return effectlist.end();
 }
 
-/// \return the number of individual storage locations
-int4 FuncProto::numLikelyTrash(void) const
+/// \return the iterator to the start of the list
+vector<VarnodeData>::const_iterator FuncProto::trashBegin(void) const
 
 {
   if (likelytrash.empty())
-    return model->numLikelyTrash();
-  return likelytrash.size();
+    return model->trashBegin();
+  return likelytrash.begin();
 }
 
-/// \param i is the index of the storage location
-/// \return the storage location which may hold a trash value
-const VarnodeData &FuncProto::getLikelyTrash(int4 i) const
+/// \return the iterator to the end of the list
+vector<VarnodeData>::const_iterator FuncProto::trashEnd(void) const
 
 {
   if (likelytrash.empty())
-    return model->getLikelyTrash(i);
-  return likelytrash[i];
+    return model->trashEnd();
+  return likelytrash.end();
 }
 
 /// \brief Decide whether a given storage location could be, or could hold, an input parameter
@@ -3493,9 +3958,10 @@ const VarnodeData &FuncProto::getLikelyTrash(int4 i) const
 /// If the input is locked, check if the location overlaps one of the current parameters.
 /// Otherwise, check if the location overlaps an entry in the prototype model.
 /// Return:
-///   - 0 if the location neither contains or is contained by a parameter storage location
-///   - 1 if the location is contained by a parameter storage location
-///   - 2 if the location contains a parameter storage location
+///   - no_containment - there is no containment between the range and any input parameter
+///   - contains_unjustified - at least one parameter contains the range
+///   - contains_justified - at least one parameter contains this range as its least significant bytes
+///   - contained_by - no parameter contains this range, but the range contains at least one parameter
 /// \param addr is the starting address of the given storage location
 /// \param size is the number of bytes in the storage
 /// \return the characterization code
@@ -3507,7 +3973,8 @@ int4 FuncProto::characterizeAsInputParam(const Address &addr,int4 size) const
     int4 num = numParams();
     if (num > 0) {
       bool locktest = false;	// Have tested against locked symbol
-      int4 characterCode = 0;
+      bool resContains = false;
+      bool resContainedBy = false;
       for(int4 i=0;i<num;++i) {
 	ProtoParameter *param = getParam(i);
 	if (!param->isTypeLocked()) continue;
@@ -3515,15 +3982,56 @@ int4 FuncProto::characterizeAsInputParam(const Address &addr,int4 size) const
 	Address iaddr = param->getAddress();
 	// If the parameter already exists, the varnode must be justified in the parameter relative
 	// to the endianness of the space, irregardless of the forceleft flag
-	if (iaddr.justifiedContain(param->getSize(),addr,size,false)==0)
-	  return 1;
+	int4 off = iaddr.justifiedContain(param->getSize(), addr, size, false);
+	if (off == 0)
+	  return ParamEntry::contains_justified;
+	else if (off > 0)
+	  resContains = true;
 	if (iaddr.containedBy(param->getSize(), addr, size))
-	  characterCode = 2;
+	  resContainedBy = true;
       }
-      if (locktest) return characterCode;
+      if (locktest) {
+	if (resContains) return ParamEntry::contains_unjustified;
+	if (resContainedBy) return ParamEntry::contained_by;
+	return ParamEntry::no_containment;
+      }
     }
   }
   return model->characterizeAsInputParam(addr, size);
+}
+
+/// \brief Decide whether a given storage location could be, or could hold, the return value
+///
+/// If the output is locked, check if the location overlaps the current return storage.
+/// Otherwise, check if the location overlaps an entry in the prototype model.
+/// Return:
+///   - no_containment - there is no containment between the range and any output storage
+///   - contains_unjustified - at least one output storage contains the range
+///   - contains_justified - at least one output storage contains this range as its least significant bytes
+///   - contained_by - no output storage contains this range, but the range contains at least one output storage
+/// \param addr is the starting address of the given storage location
+/// \param size is the number of bytes in the storage
+/// \return the characterization code
+int4 FuncProto::characterizeAsOutput(const Address &addr,int4 size) const
+
+{
+  if (isOutputLocked()) {
+    ProtoParameter *outparam = getOutput();
+    if (outparam->getType()->getMetatype() == TYPE_VOID)
+      return ParamEntry::no_containment;
+    Address iaddr = outparam->getAddress();
+    // If the output is locked, the varnode must be justified in the location relative
+    // to the endianness of the space, irregardless of the forceleft flag
+    int4 off = iaddr.justifiedContain(outparam->getSize(),addr,size,false);
+    if (off == 0)
+      return ParamEntry::contains_justified;
+    else if (off > 0)
+      return ParamEntry::contains_unjustified;
+    if (iaddr.containedBy(outparam->getSize(),addr,size))
+      return ParamEntry::contained_by;
+    return ParamEntry::no_containment;
+  }
+  return model->characterizeAsOutput(addr, size);
 }
 
 /// \brief Decide whether a given storage location could be an input parameter
@@ -3623,8 +4131,6 @@ bool FuncProto::unjustifiedInputParam(const Address &addr,int4 size,VarnodeData 
   return model->unjustifiedInputParam(addr,size,res);
 }
 
-/// \brief Pass-back the biggest input parameter contained within the given range
-///
 /// \param loc is the starting address of the given range
 /// \param size is the number of bytes in the range
 /// \param res will hold the parameter storage description being passed back
@@ -3656,6 +4162,29 @@ bool FuncProto::getBiggestContainedInputParam(const Address &loc,int4 size,Varno
     }
   }
   return model->getBiggestContainedInputParam(loc,size,res);
+}
+
+/// \param loc is the starting address of the given range
+/// \param size is the number of bytes in the range
+/// \param res will hold the output storage description being passed back
+/// \return \b true if there is at least one possible output contained in the range
+bool FuncProto::getBiggestContainedOutput(const Address &loc,int4 size,VarnodeData &res) const
+
+{
+  if (isOutputLocked()) {
+    ProtoParameter *outparam = getOutput();
+    if (outparam->getType()->getMetatype() == TYPE_VOID)
+      return false;
+    Address iaddr = outparam->getAddress();
+    if (iaddr.containedBy(outparam->getSize(), loc, size)) {
+      res.space = iaddr.getSpace();
+      res.offset = iaddr.getOffset();
+      res.size = outparam->getSize();
+      return true;
+    }
+    return false;
+  }
+  return model->getBiggestContainedOutput(loc,size,res);
 }
 
 /// \brief Decide if \b this can be safely restricted to match another prototype
@@ -3769,57 +4298,8 @@ void FuncProto::saveXml(ostream &s) const
   outparam->getAddress().saveXml(s,outparam->getSize());
   outparam->getType()->saveXml(s);
   s << "  </returnsym>\n";
-  if (!effectlist.empty()) {
-    int4 othercount = 0;
-    s << "  <unaffected>\n";
-    for(uint4 i=0;i<effectlist.size();++i) {
-      uint4 tp = effectlist[i].getType();
-      if (tp!=EffectRecord::unaffected) {
-	othercount += 1;
-	continue;
-      }
-      s << "    ";
-      effectlist[i].saveXml(s);
-      s << '\n';
-    }
-    s << "  </unaffected>\n";
-    if (othercount > 0) {
-      othercount = 0;
-      s << "  <killedbycall>\n";
-      for(uint4 i=0;i<effectlist.size();++i) {
-	uint4 tp = effectlist[i].getType();
-	if (tp != EffectRecord::killedbycall) {
-	  othercount += 1;
-	  continue;
-	}
-	s << "    ";
-	effectlist[i].saveXml(s);
-	s << '\n';
-      }
-      s << "  </killedbycall>\n";
-    }
-    if (othercount > 0) {
-      s << "  <returnaddress>\n";
-      for(uint4 i=0;i<effectlist.size();++i) {
-	uint4 tp = effectlist[i].getType();
-	if (tp != EffectRecord::return_address) continue;
-	s << "    ";
-	effectlist[i].saveXml(s);
-	s << '\n';
-      }
-      s << "  </returnaddress>\n";
-    }
-  }
-  if (!likelytrash.empty()) {
-    s << "  <likelytrash>\n";
-    for(uint4 i=0;i<likelytrash.size();++i) {
-      s << "    <addr";
-      const VarnodeData &vdata(likelytrash[i]);
-      vdata.space->saveXmlAttributes(s,vdata.offset,vdata.size);
-      s << "/>\n";
-    }
-    s << "  </likelytrash>\n";
-  }
+  saveEffectXml(s);
+  saveLikelyTrashXml(s);
   if (injectid >= 0) {
     Architecture *glb = model->getArch();
     s << "  <inject>" << glb->pcodeinjectlib->getCallFixupName(injectid) << "</inject>\n";
@@ -3924,7 +4404,7 @@ void FuncProto::restoreXml(const Element *el,Architecture *glb)
     bool outputlock = false;
 
     if (subel->getName() == "returnsym") {
-      int4 num = subel->getNumAttributes();
+      num = subel->getNumAttributes();
       for(int4 i=0;i<num;++i) {
 	const string &attrname( subel->getAttributeName(i) );
 	if (attrname == "typelock")
@@ -4003,8 +4483,8 @@ void FuncProto::restoreXml(const Element *el,Architecture *glb)
       store->restoreXml(*iter,model);
     }
   }
-  sort(effectlist.begin(),effectlist.end());
-  sort(likelytrash.begin(),likelytrash.end());
+  restoreEffectXml();
+  restoreLikelyTrashXml();
   if (!isModelLocked()) {
     if (isInputLocked())
       flags |= modellock;
@@ -4578,6 +5058,8 @@ void FuncCallSpecs::deindirect(Funcdata &data,Funcdata *newfd)
   if (isOverride())	// If we are overridden at the call-site
     return;		// Don't use the discovered function prototype
 
+  data.getOverride().insertIndirectOverride(op->getAddr(),entryaddress);
+
   // Try our best to merge existing prototype
   // with the one we have just been handed
   vector<Varnode *> newinput;
@@ -4589,7 +5071,6 @@ void FuncCallSpecs::deindirect(Funcdata &data,Funcdata *newfd)
     commitNewOutputs(data,newoutput);
   }
   else {
-    data.getOverride().insertIndirectOverride(op->getAddr(),entryaddress);
     data.setRestartPending(true);
   }
 }
@@ -4610,16 +5091,19 @@ void FuncCallSpecs::forceSet(Funcdata &data,const FuncProto &fp)
 {
   vector<Varnode *> newinput;
   Varnode *newoutput;
+
+  // Copy the recovered prototype into the override manager so that
+  // future restarts don't have to rediscover it
+  FuncProto *newproto = new FuncProto();
+  newproto->copy(fp);
+  data.getOverride().insertProtoOverride(op->getAddr(),newproto);
   if (lateRestriction(fp,newinput,newoutput)) {
     commitNewInputs(data,newinput);
     commitNewOutputs(data,newoutput);
   }
   else {
     // Too late to make restrictions to correct prototype
-    // Add a restart override with the forcing prototype
-    FuncProto *newproto = new FuncProto();
-    newproto->copy(fp);
-    data.getOverride().insertProtoOverride(op->getAddr(),newproto);
+    // Force a restart
     data.setRestartPending(true);
   }
   // Regardless of what happened, lock the prototype so it doesn't happen again
@@ -4637,9 +5121,9 @@ void FuncCallSpecs::forceSet(Funcdata &data,const FuncProto &fp)
 void FuncCallSpecs::insertPcode(Funcdata &data)
 
 {
-  int4 injectid = getInjectUponReturn();
-  if (injectid < 0) return;		// Nothing to inject
-  InjectPayload *payload = data.getArch()->pcodeinjectlib->getPayload(injectid);
+  int4 id = getInjectUponReturn();
+  if (id < 0) return;		// Nothing to inject
+  InjectPayload *payload = data.getArch()->pcodeinjectlib->getPayload(id);
 
   // do the insertion right after the callpoint
   list<PcodeOp *>::iterator iter = op->getBasicIter();
@@ -4710,13 +5194,13 @@ void FuncCallSpecs::checkInputTrialUse(Funcdata &data,AliasChecker &aliascheck)
 
   int4 maxancestor = data.getArch()->trim_recurse_max;
   bool callee_pop = false;
-  int4 extrapop = 0;
+  int4 expop = 0;
   if (hasModel()) {
     callee_pop = (getModelExtraPop() == ProtoModel::extrapop_unknown);
     if (callee_pop) {		
-      extrapop = getExtraPop();
+      expop = getExtraPop();
       // Tried to use getEffectiveExtraPop at one point, but it is too unreliable
-      if ((extrapop==ProtoModel::extrapop_unknown)||(extrapop <=4))
+      if ((expop==ProtoModel::extrapop_unknown)||(expop <=4))
 	callee_pop = false;
       // If the subfunctions do their own parameter popping and
       // if the extrapop is successfully recovered this is hard evidence
@@ -4738,13 +5222,13 @@ void FuncCallSpecs::checkInputTrialUse(Funcdata &data,AliasChecker &aliascheck)
       else if (!data.getFuncProto().getLocalRange().inRange(vn->getAddr(),1))
 	trial.markNoUse();
       else if (callee_pop) {
-	if ((int4)(trial.getAddress().getOffset() + (trial.getSize()-1)) < extrapop)
+	if ((int4)(trial.getAddress().getOffset() + (trial.getSize()-1)) < expop)
 	  trial.markActive();
 	else
 	  trial.markNoUse();
       }
       else if (ancestorReal.execute(op,slot,&trial,false)) {
-	if (data.ancestorOpUse(maxancestor,vn,op,trial))
+	if (data.ancestorOpUse(maxancestor,vn,op,trial,0,0))
 	  trial.markActive();
 	else
 	  trial.markInactive();
@@ -4754,7 +5238,7 @@ void FuncCallSpecs::checkInputTrialUse(Funcdata &data,AliasChecker &aliascheck)
     }
     else {
       if (ancestorReal.execute(op,slot,&trial,true)) {
-	if (data.ancestorOpUse(maxancestor,vn,op,trial)) {
+	if (data.ancestorOpUse(maxancestor,vn,op,trial,0,0)) {
 	  trial.markActive();
 	  if (trial.hasCondExeEffect())
 	    activeinput.markNeedsFinalCheck();

@@ -130,6 +130,45 @@ FlowBlock *PriorityQueue::extract(void)
   return res;
 }
 
+/// Initialize heritage state information for a particular address space
+/// \param spc is the address space
+HeritageInfo::HeritageInfo(AddrSpace *spc)
+
+{
+  if (spc == (AddrSpace *)0) {
+    space = (AddrSpace *)0;
+    delay = 0;
+    deadcodedelay = 0;
+    hasCallPlaceholders = false;
+  }
+  else if (!spc->isHeritaged()) {
+    space = (AddrSpace *)0;
+    delay = spc->getDelay();
+    deadcodedelay = spc->getDeadcodeDelay();
+    hasCallPlaceholders = false;
+  }
+  else {
+    space = spc;
+    delay = spc->getDelay();
+    deadcodedelay = spc->getDeadcodeDelay();
+    hasCallPlaceholders = (spc->getType() == IPTR_SPACEBASE);
+  }
+  deadremoved = 0;
+  warningissued = false;
+  loadGuardSearch = false;
+}
+
+void HeritageInfo::reset(void)
+
+{
+  // Leave any override intact: deadcodedelay = delay;
+  deadremoved = 0;
+  if (space != (AddrSpace *)0)
+    hasCallPlaceholders = (space->getType() == IPTR_SPACEBASE);
+  warningissued = false;
+  loadGuardSearch = false;
+}
+
 /// Instantiate the heritage manager for a particular function.
 /// \param data is the function
 Heritage::Heritage(Funcdata *data)
@@ -1052,7 +1091,7 @@ void Heritage::guard(const Address &addr,int4 size,vector<Varnode *> &read,vecto
 		     vector<Varnode *> &inputvars)
 
 {
-  uint4 flags;
+  uint4 fl;
   Varnode *vn;
   vector<Varnode *>::iterator iter;
   bool guardneeded = true;
@@ -1091,14 +1130,14 @@ void Heritage::guard(const Address &addr,int4 size,vector<Varnode *> &read,vecto
 				// for the same address confuses the renaming algorithm
 				// SO we don't guard if we think we've guarded before
   if (guardneeded) {
-    flags = 0;
+    fl = 0;
     // Query for generic properties of address (use empty usepoint)
-    fd->getScopeLocal()->queryProperties(addr,size,Address(),flags);
-    guardCalls(flags,addr,size,write);
-    guardReturns(flags,addr,size,write);
+    fd->getScopeLocal()->queryProperties(addr,size,Address(),fl);
+    guardCalls(fl,addr,size,write);
+    guardReturns(fl,addr,size,write);
     if (fd->getArch()->highPtrPossible(addr,size)) {
       guardStores(addr,size,write);
-      guardLoads(flags,addr,size,write);
+      guardLoads(fl,addr,size,write);
     }
   }
 }
@@ -1139,24 +1178,81 @@ void Heritage::guardCallOverlappingInput(FuncCallSpecs *fc,const Address &addr,c
   }
 }
 
+/// \brief Guard an address range that is larger than the possible output storage
+///
+/// A potential return value should look like an \b indirect \b creation at this stage,
+/// but the range is even bigger.  We split it up into 2 or 3 Varnodes, and make each one via
+/// an INDIRECT.  The piece corresponding to the potential return value is registered, and all
+/// the pieces are concatenated to form a Varnode of the whole range.
+/// \param fc is the call site potentially returning a value
+/// \param addr is the starting address of the range
+/// \param size is the size of the range in bytes
+/// \param write is the set of new written Varnodes
+/// \return \b true if the INDIRECTs were created
+bool Heritage::guardCallOverlappingOutput(FuncCallSpecs *fc,const Address &addr,int4 size,vector<Varnode *> &write)
+
+{
+  VarnodeData vData;
+
+  if (!fc->getBiggestContainedOutput(addr, size, vData))
+    return false;
+  ParamActive *active = fc->getActiveOutput();
+  Address truncAddr(vData.space,vData.offset);
+  if (active->whichTrial(truncAddr, size) >= 0)
+    return false;		// Trial already exists
+  int4 sizeFront = (int4)(vData.offset - addr.getOffset());
+  int4 sizeBack = size - vData.size - sizeFront;
+  PcodeOp *indOp = fd->newIndirectCreation(fc->getOp(),truncAddr,vData.size,true);
+  Varnode *vnCollect = indOp->getOut();
+  PcodeOp *insertPoint = fc->getOp();
+  if (sizeFront != 0) {
+    PcodeOp *indOpFront = fd->newIndirectCreation(indOp,addr,sizeFront,false);
+    Varnode *newFront = indOpFront->getOut();
+    PcodeOp *concatFront = fd->newOp(2,indOp->getAddr());
+    int4 slotNew = vData.space->isBigEndian() ? 0 : 1;
+    fd->opSetOpcode(concatFront, CPUI_PIECE);
+    fd->opSetInput(concatFront,newFront,slotNew);
+    fd->opSetInput(concatFront,vnCollect,1-slotNew);
+    vnCollect = fd->newVarnodeOut(sizeFront+vData.size,addr,concatFront);
+    fd->opInsertAfter(concatFront, insertPoint);
+    insertPoint = concatFront;
+  }
+  if (sizeBack != 0) {
+    Address addrBack = truncAddr + vData.size;
+    PcodeOp *indOpBack = fd->newIndirectCreation(fc->getOp(),addrBack,sizeBack,false);
+    Varnode *newBack = indOpBack->getOut();
+    PcodeOp *concatBack = fd->newOp(2,indOp->getAddr());
+    int4 slotNew = vData.space->isBigEndian() ? 1 : 0;
+    fd->opSetOpcode(concatBack, CPUI_PIECE);
+    fd->opSetInput(concatBack,newBack,slotNew);
+    fd->opSetInput(concatBack,vnCollect,1-slotNew);
+    vnCollect = fd->newVarnodeOut(size,addr,concatBack);
+    fd->opInsertAfter(concatBack, insertPoint);
+  }
+  vnCollect->setActiveHeritage();
+  write.push_back(vnCollect);
+  active->registerTrial(truncAddr, vData.size);
+  return true;
+}
+
 /// \brief Guard CALL/CALLIND ops in preparation for renaming algorithm
 ///
 /// For the given address range, we decide what the data-flow effect is
 /// across each call site in the function.  If an effect is unknown, an
 /// INDIRECT op is added, prepopulating data-flow through the call.
 /// Any new INDIRECT causes a new Varnode to be added to the \b write list.
-/// \param flags are any boolean properties associated with the address range
+/// \param fl are any boolean properties associated with the address range
 /// \param addr is the first address of given range
 /// \param size is the number of bytes in the range
 /// \param write is the list of written Varnodes in the range (may be updated)
-void Heritage::guardCalls(uint4 flags,const Address &addr,int4 size,vector<Varnode *> &write)
+void Heritage::guardCalls(uint4 fl,const Address &addr,int4 size,vector<Varnode *> &write)
 
 {
   FuncCallSpecs *fc;
   PcodeOp *indop;
   uint4 effecttype;
 
-  bool holdind = ((flags&Varnode::addrtied)!=0);
+  bool holdind = ((fl&Varnode::addrtied)!=0);
   for(int4 i=0;i<fd->numCalls();++i) {
     fc = fd->getCallSpecs(i);
     if (fc->getOp()->isAssignment()) {
@@ -1167,11 +1263,18 @@ void Heritage::guardCalls(uint4 flags,const Address &addr,int4 size,vector<Varno
     bool possibleoutput = false;
     if (fc->isOutputActive()) {
       ParamActive *active = fc->getActiveOutput();
-      if (fc->possibleOutputParam(addr,size)) {
-	if (active->whichTrial(addr,size)<0) { // If not already a trial
-	  active->registerTrial(addr,size);
-	  effecttype = EffectRecord::killedbycall; // A potential output is always killed by call
-	  possibleoutput = true;
+      int4 outputCharacter = fc->characterizeAsOutput(addr, size);
+      if (outputCharacter != ParamEntry::no_containment) {
+	effecttype = EffectRecord::killedbycall; // A potential output is always killed by call
+	if (outputCharacter == ParamEntry::contained_by) {
+	  if (guardCallOverlappingOutput(fc, addr, size, write))
+	    effecttype = EffectRecord::unaffected;	// Range is handled, don't do additional guarding
+	}
+	else {
+	  if (active->whichTrial(addr,size)<0) { // If not already a trial
+	    active->registerTrial(addr,size);
+	    possibleoutput = true;
+	  }
 	}
       }
     }
@@ -1180,21 +1283,15 @@ void Heritage::guardCalls(uint4 flags,const Address &addr,int4 size,vector<Varno
       uintb off = addr.getOffset();
       bool tryregister = true;
       if (spc->getType() == IPTR_SPACEBASE) {
-	if (fc->getStackPlaceholderSlot() < 0) { // Any stack resolution is complete (or never started)
-	  if (fc->getSpacebaseOffset() != FuncCallSpecs::offset_unknown)
-	    off = spc->wrapOffset(off - fc->getSpacebaseOffset());
-	  else
-	    tryregister = false; // Do not attempt to register this stack loc as a trial
-	}
-	else {			// Stack has not been resolved, so we need to abort
-	  fc->abortSpacebaseRelative(*fd);
-	  tryregister = false;
-	}
+	if (fc->getSpacebaseOffset() != FuncCallSpecs::offset_unknown)
+	  off = spc->wrapOffset(off - fc->getSpacebaseOffset());
+	else
+	  tryregister = false; // Do not attempt to register this stack loc as a trial
       }
       Address transAddr(spc,off);	// Address relative to callee's stack
       if (tryregister) {
 	int4 inputCharacter = fc->characterizeAsInputParam(transAddr,size);
-	if (inputCharacter == 1) {		// Call could be using this range as an input parameter
+	if (inputCharacter == ParamEntry::contains_justified) {	// Call could be using this range as an input parameter
 	  ParamActive *active = fc->getActiveInput();
 	  if (active->whichTrial(transAddr,size)<0) { // If not already a trial
 	    PcodeOp *op = fc->getOp();
@@ -1204,7 +1301,7 @@ void Heritage::guardCalls(uint4 flags,const Address &addr,int4 size,vector<Varno
 	    fd->opInsertInput(op,vn,op->numInput());
 	  }
 	}
-	else if (inputCharacter == 2)		// Call may be using part of this range as an input parameter
+	else if (inputCharacter == ParamEntry::contained_by)	// Call may be using part of this range as an input parameter
 	  guardCallOverlappingInput(fc, addr, transAddr, size);
       }
     }
@@ -1264,17 +1361,17 @@ void Heritage::guardStores(const Address &addr,int4 size,vector<Varnode *> &writ
 /// The op must be in the loadGuard list, which means it may pull values from an indexed
 /// range on the stack.  A COPY guard is placed for the given range on any LOAD op whose
 /// indexed range it intersects.
-/// \param flags is boolean properties associated with the address
+/// \param fl is boolean properties associated with the address
 /// \param addr is the first address of the given range
 /// \param size is the number of bytes in the given range
 /// \param write is the list of written Varnodes in the range (may be updated)
-void Heritage::guardLoads(uint4 flags,const Address &addr,int4 size,vector<Varnode *> &write)
+void Heritage::guardLoads(uint4 fl,const Address &addr,int4 size,vector<Varnode *> &write)
 
 {
   PcodeOp *copyop;
   list<LoadGuard>::iterator iter;
 
-  if ((flags & Varnode::addrtied)==0) return;	// If not address tied, don't consider for index alias
+  if ((fl & Varnode::addrtied)==0) return;	// If not address tied, don't consider for index alias
   iter = loadGuard.begin();
   while(iter!=loadGuard.end()) {
     LoadGuard &guardRec(*iter);
@@ -1301,6 +1398,43 @@ void Heritage::guardLoads(uint4 flags,const Address &addr,int4 size,vector<Varno
   }
 }
 
+/// \brief Guard data-flow at RETURN ops, where range properly contains potention return storage
+///
+/// The RETURN ops need to take a new input because of the potential of a return value,
+/// but the range is too big so it must be truncated to fit.
+/// \param addr is the starting address of the range
+/// \param size is the size of the range in bytes
+void Heritage::guardReturnsOverlapping(const Address &addr,int4 size)
+
+{
+  VarnodeData vData;
+  list<PcodeOp *>::const_iterator iter,iterend;
+
+  if (!fd->getFuncProto().getBiggestContainedOutput(addr, size, vData))
+    return;
+  Address truncAddr(vData.space,vData.offset);
+  ParamActive *active = fd->getActiveOutput();
+  active->registerTrial(truncAddr,vData.size);
+  int4 offset = (int4)(vData.offset - addr.getOffset());	// Number of least significant bytes to truncate
+  if (vData.space->isBigEndian())
+    offset = (size - vData.size) - offset;
+  iterend = fd->endOp(CPUI_RETURN);
+  for(iter=fd->beginOp(CPUI_RETURN);iter!=iterend;++iter) {
+    PcodeOp *op = *iter;
+    if (op->isDead()) continue;
+    if (op->getHaltType() != 0) continue; // Special halt points cannot take return values
+    Varnode *invn = fd->newVarnode(size,addr);
+    PcodeOp *subOp = fd->newOp(2,op->getAddr());
+    fd->opSetOpcode(subOp, CPUI_SUBPIECE);
+    fd->opSetInput(subOp,invn,0);
+    fd->opSetInput(subOp,fd->newConstant(4, offset),1);
+    fd->opInsertBefore(subOp, op);
+    Varnode *retVal = fd->newVarnodeOut(vData.size,truncAddr,subOp);
+    invn->setActiveHeritage();
+    fd->opInsertInput(op,retVal,op->numInput());
+  }
+}
+
 /// \brief Guard global data-flow at RETURN ops in preparation for renaming
 ///
 /// For the given global (persistent) address range, data-flow must persist up to
@@ -1309,11 +1443,11 @@ void Heritage::guardLoads(uint4 flags,const Address &addr,int4 size,vector<Varno
 /// is added as input to the RETURN (for possible return values), or a COPY
 /// is inserted right before the RETURN with its output marked as
 /// \b address \b forced.
-/// \param flags are any boolean properties associated with the address range
+/// \param fl are any boolean properties associated with the address range
 /// \param addr is the first address of the given range
 /// \param size is the number of bytes in the range
 /// \param write is the list of written Varnodes in the range (unused)
-void Heritage::guardReturns(uint4 flags,const Address &addr,int4 size,vector<Varnode *> &write)
+void Heritage::guardReturns(uint4 fl,const Address &addr,int4 size,vector<Varnode *> &write)
 
 {
   list<PcodeOp *>::const_iterator iter,iterend;
@@ -1321,7 +1455,10 @@ void Heritage::guardReturns(uint4 flags,const Address &addr,int4 size,vector<Var
 
   ParamActive *active = fd->getActiveOutput();
   if (active != (ParamActive *)0) {
-    if (fd->getFuncProto().possibleOutputParam(addr,size)) {
+    int4 outputCharacter = fd->getFuncProto().characterizeAsOutput(addr, size);
+    if (outputCharacter == ParamEntry::contained_by)
+      guardReturnsOverlapping(addr, size);
+    else if (outputCharacter != ParamEntry::no_containment) {
       active->registerTrial(addr,size);
       iterend = fd->endOp(CPUI_RETURN);
       for(iter=fd->beginOp(CPUI_RETURN);iter!=iterend;++iter) {
@@ -1334,7 +1471,7 @@ void Heritage::guardReturns(uint4 flags,const Address &addr,int4 size,vector<Var
       }
     }
   }
-  if ((flags&Varnode::persist)==0) return;
+  if ((fl&Varnode::persist)==0) return;
   iterend = fd->endOp(CPUI_RETURN);
   for(iter=fd->beginOp(CPUI_RETURN);iter!=iterend;++iter) {
     op = *iter;
@@ -1344,6 +1481,7 @@ void Heritage::guardReturns(uint4 flags,const Address &addr,int4 size,vector<Var
     vn->setAddrForce();
     vn->setActiveHeritage();
     fd->opSetOpcode(copyop,CPUI_COPY);
+    copyop->setStopCopyPropagation();
     Varnode *invn = fd->newVarnode(size,addr);
     invn->setActiveHeritage();
     fd->opSetInput(copyop,invn,0);
@@ -1576,7 +1714,7 @@ bool Heritage::refinement(const Address &addr,int4 size,const vector<Varnode *> 
 
   // Alter the disjoint cover (both locally and globally) to reflect our refinement
   LocationMap::iterator iter = disjoint.find(addr);
-  int4 pass = (*iter).second.pass;
+  int4 addrPass = (*iter).second.pass;
   disjoint.erase(iter);
   iter = globaldisjoint.find(addr);
   globaldisjoint.erase(iter);
@@ -1585,8 +1723,8 @@ bool Heritage::refinement(const Address &addr,int4 size,const vector<Varnode *> 
   int4 intersect;
   while(cut < size) {
     int4 sz = refine[cut];
-    disjoint.add(curaddr,sz,pass,intersect);
-    globaldisjoint.add(curaddr,sz,pass,intersect);
+    disjoint.add(curaddr,sz,addrPass,intersect);
+    globaldisjoint.add(curaddr,sz,addrPass,intersect);
     cut += sz;
     curaddr = curaddr + sz;
   }
@@ -1648,8 +1786,8 @@ void Heritage::guardInput(const Address &addr,int4 size,vector<Varnode *> &input
   // Now we need to make sure that all the inputs get linked
   // together into a single input
   if (newinput.size()==1) return; // Will get linked in automatically
-  for(uint4 i=0;i<newinput.size();++i)
-    newinput[i]->setWriteMask();
+  for(uint4 j=0;j<newinput.size();++j)
+    newinput[j]->setWriteMask();
 //   if (!seenunspliced) {
 //     // Check to see if a concatenation of inputs already exists
 //     // If it existed already it would be defined at fd->getAddress()
@@ -1694,6 +1832,19 @@ static void verify_dfs(const vector<FlowBlock *> &list,vector<vector<FlowBlock *
     throw LowlevelError("dfs does not verify");
 }
 #endif
+
+/// Assuming we are just about to do heritage on an address space,
+/// clear any placeholder LOADs associated with it on CALLs.
+/// \param info is state for the specific address space
+void Heritage::clearStackPlaceholders(HeritageInfo *info)
+
+{
+  int4 numCalls = fd->numCalls();
+  for(int4 i=0;i<numCalls;++i) {
+    fd->getCallSpecs(i)->abortSpacebaseRelative(*fd);
+  }
+  info->hasCallPlaceholders = false;	// Mark that clear has taken place
+}
 
 /// \brief Perform one level of Varnode splitting to match a JoinRecord
 ///
@@ -2288,16 +2439,9 @@ void Heritage::buildInfoList(void)
 {
   if (!infolist.empty()) return;
   const AddrSpaceManager *manage = fd->getArch();
-  infolist.resize(manage->numSpaces());
-  for(int4 i=0;i<manage->numSpaces();++i) {
-    AddrSpace *spc = manage->getSpace(i);
-    if (spc == (AddrSpace *)0)
-      infolist[i].set((AddrSpace *)0,0,0);
-    else if (!spc->isHeritaged())
-      infolist[i].set((AddrSpace *)0,spc->getDelay(),spc->getDeadcodeDelay());
-    else
-      infolist[i].set(spc,spc->getDelay(),spc->getDeadcodeDelay());
-  }
+  infolist.reserve(manage->numSpaces());
+  for(int4 i=0;i<manage->numSpaces();++i)
+    infolist.emplace_back(manage->getSpace(i));
 }
 
 /// From any address space that is active for this pass, free Varnodes are collected
@@ -2328,6 +2472,9 @@ void Heritage::heritage(void)
     info = &infolist[i];
     if (!info->isHeritaged()) continue;
     if (pass < info->delay) continue; // It is too soon to heritage this space
+    if (info->hasCallPlaceholders)
+      clearStackPlaceholders(info);
+
     if (!info->loadGuardSearch) {
       info->loadGuardSearch = true;
       if (discoverIndexedStackPointers(info->space,freeStores,true)) {
@@ -2358,7 +2505,8 @@ void Heritage::heritage(void)
 	}
 	disjoint.add((*liter).first,(*liter).second.size,pass,prev);
       }
-      else {
+      else {	// Partially contained in old range, but may contain new stuff
+	disjoint.add((*liter).first,(*liter).second.size,pass,prev);
 	if ((!needwarning)&&(info->deadremoved>0)) {
 	  // TODO: We should check if this varnode is tiled by previously heritaged ranges
 	  if (vn->isHeritageKnown()) continue;		// Assume that it is tiled and produced by merging
@@ -2367,7 +2515,6 @@ void Heritage::heritage(void)
 	  bumpDeadcodeDelay(vn);
 	  warnvn = vn;
 	}
-	disjoint.add((*liter).first,(*liter).second.size,pass,prev);
       }
     }
 

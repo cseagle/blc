@@ -111,7 +111,8 @@ class SubvariableFlow {
   void addBooleanPatch(PcodeOp *pullop,ReplaceVarnode *rvn,int4 slot);
   void addSuggestedPatch(ReplaceVarnode *rvn,PcodeOp *pushop,int4 sa);
   void addComparePatch(ReplaceVarnode *in1,ReplaceVarnode *in2,PcodeOp *op);
-  ReplaceVarnode *addConstant(ReplaceOp *rop,uintb mask,uint4 slot,uintb val);
+  ReplaceVarnode *addConstant(ReplaceOp *rop,uintb mask,uint4 slot,Varnode *constvn);
+  ReplaceVarnode *addNewConstant(ReplaceOp *rop,uint4 slot,uintb val);
   void createNewOut(ReplaceOp *rop,uintb mask);
   void replaceInput(ReplaceVarnode *rvn);
   bool useSameAddress(ReplaceVarnode *rvn);
@@ -172,7 +173,6 @@ class LaneDivide : public TransformManager {
   /// \brief Description of a large Varnode that needs to be traced (in the worklist)
   class WorkNode {
     friend class LaneDivide;
-    Varnode *vn;	///< The underlying Varnode with lanes
     TransformVar *lanes;	///< Lane placeholders for underyling Varnode
     int4 numLanes;	///< Number of lanes in the particular Varnode
     int4 skipLanes;	///< Number of lanes to skip in the global description

@@ -249,6 +249,24 @@
     <ClCompile Include="stringmanage.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="unionresolve.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="testfunction.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="interface.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ifacedecomp.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="grammar.tab.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="callgraph.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="action.hh">

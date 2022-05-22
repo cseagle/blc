@@ -127,20 +127,18 @@ bool SymbolEntry::updateType(Varnode *vn) const
 Datatype *SymbolEntry::getSizedType(const Address &inaddr,int4 sz) const
 
 {
-  Datatype *last,*cur;
   uintb off;
 
   if (isDynamic())
     off = offset;
   else
     off = (inaddr.getOffset() - addr.getOffset()) + offset;
-  cur = symbol->getType();
+  Datatype *cur = symbol->getType();
   do {
-    last = cur;
+    if (offset == 0 && cur->getSize() == sz)
+      return cur;
     cur = cur->getSubType(off,&off);
   } while(cur != (Datatype *)0);
-  if (last->getSize() == sz)
-    return last;
   //    else {
   // This case occurs if the varnode is a "partial type" of some sort
   // This PROBABLY means the varnode shouldn't be considered addrtied
@@ -377,18 +375,8 @@ void Symbol::saveXmlHeader(ostream &s) const
   int4 format = getDisplayFormat();
   if (format != 0) {
     s << " format=\"";
-    if (format == force_hex)
-      s << "hex\"";
-    else if (format == force_dec)
-      s << "dec\"";
-    else if (format == force_char)
-      s << "char\"";
-    else if (format == force_oct)
-      s << "oct\"";
-    else if (format == force_bin)
-      s << "bin\"";
-    else
-      s << "hex\"";
+    s << Datatype::decodeIntegerFormat(format);
+    s << '\"';
   }
   a_v_i(s,"cat",category);
   if (category >= 0)
@@ -400,7 +388,7 @@ void Symbol::restoreXmlHeader(const Element *el)
 
 {
   name.clear();
-  category = -1;
+  category = no_category;
   symbolId = 0;
   for(int4 i=0;i<el->getNumAttributes();++i) {
     const string &attName(el->getAttributeName(i));
@@ -415,16 +403,7 @@ void Symbol::restoreXmlHeader(const Element *el)
       case 'f':
 	if (attName == "format") {
 	  const string &formString(el->getAttributeValue(i));
-	  if (formString == "hex")
-	    dispflags |= force_hex;
-	  else if (formString == "dec")
-	    dispflags |= force_dec;
-	  else if (formString == "char")
-	    dispflags |= force_char;
-	  else if (formString == "oct")
-	    dispflags |= force_oct;
-	  else if (formString == "bin")
-	    dispflags |= force_bin;
+	  dispflags |= Datatype::encodeIntegerFormat(formString);
 	}
 	break;
       case 'h':
@@ -488,7 +467,7 @@ void Symbol::restoreXmlHeader(const Element *el)
 	break;
     }
   }
-  if (category == 0) {
+  if (category == function_parameter) {
     istringstream s2(el->getAttributeValue("index"));
     s2.unsetf(ios::dec | ios::hex | ios::oct);
     s2 >> catindex;
@@ -639,6 +618,21 @@ void FunctionSymbol::restoreXml(const Element *el)
   }
 }
 
+/// Create a symbol either to associate a name with a constant or to force a display conversion
+///
+/// \param sc is the scope owning the new symbol
+/// \param nm is the name of the equate (an empty string can be used for a convert)
+/// \param format is the desired display conversion (0 for no conversion)
+/// \param val is the constant value whose display is being altered
+EquateSymbol::EquateSymbol(Scope *sc,const string &nm,uint4 format,uintb val)
+  : Symbol(sc, nm, (Datatype *)0)
+{
+  value = val;
+  category = equate;
+  type = sc->getArch()->types->getBase(1,TYPE_UNKNOWN);
+  dispflags |= format;
+}
+
 /// An EquateSymbol should survive certain kinds of transforms during decompilation,
 /// such as negation, twos-complementing, adding or subtracting 1.
 /// Return \b true if the given value looks like a transform of this type relative
@@ -688,7 +682,49 @@ void EquateSymbol::restoreXml(const Element *el)
 
   TypeFactory *types = scope->getArch()->types;
   type = types->getBase(1,TYPE_UNKNOWN);
-  checkSizeTypeLock();
+}
+
+/// Create a symbol that forces a particular field of a union to propagate
+///
+/// \param sc is the scope owning the new symbol
+/// \param nm is the name of the symbol
+/// \param unionDt is the union data-type being forced
+/// \param fldNum is the particular field to force (-1 indicates the whole union)
+UnionFacetSymbol::UnionFacetSymbol(Scope *sc,const string &nm,Datatype *unionDt,int4 fldNum)
+  : Symbol(sc, nm, unionDt)
+{
+  fieldNum = fldNum;
+  category = union_facet;
+}
+
+void UnionFacetSymbol::saveXml(ostream &s) const
+
+{
+  s << "<facetsymbol";
+  saveXmlHeader(s);
+  a_v_i(s,"field",fieldNum);
+  s << ">\n";
+  saveXmlBody(s);
+  s << "</facetsymbol>\n";
+}
+
+void UnionFacetSymbol::restoreXml(const Element *el)
+
+{
+  restoreXmlHeader(el);
+  istringstream s(el->getAttributeValue("field"));
+  s.unsetf(ios::dec | ios::hex | ios::oct);
+  s >> fieldNum;
+  const List &list(el->getChildren());
+
+  restoreXmlBody(list.begin());
+  Datatype *testType = type;
+  if (testType->getMetatype() == TYPE_PTR)
+    testType = ((TypePointer *)testType)->getPtrTo();
+  if (testType->getMetatype() != TYPE_UNION)
+    throw LowlevelError("<unionfacetsymbol> does not have a union type");
+  if (fieldNum < -1 || fieldNum >= testType->numDepend())
+    throw LowlevelError("<unionfacetsymbol> field attribute is out of bounds");
 }
 
 /// Label symbols don't really have a data-type, so we just put
@@ -1154,27 +1190,27 @@ Scope::~Scope(void)
 /// If there are no Symbols in \b this Scope, recurse into the parent Scope.
 /// If there are 1 (or more) Symbols matching in \b this Scope, add them to
 /// the result list
-/// \param name is the name to search for
+/// \param nm is the name to search for
 /// \param res is the result list
-void Scope::queryByName(const string &name,vector<Symbol *> &res) const
+void Scope::queryByName(const string &nm,vector<Symbol *> &res) const
 
 {
-  findByName(name,res);
+  findByName(nm,res);
   if (!res.empty())
     return;
   if (parent != (Scope *)0)
-    parent->queryByName(name,res);
+    parent->queryByName(nm,res);
 }
 
 /// Starting with \b this Scope, find a function with the given name.
 /// If there are no Symbols with that name in \b this Scope at all, recurse into the parent Scope.
-/// \param name if the name to search for
+/// \param nm if the name to search for
 /// \return the Funcdata object of the matching function, or NULL if it doesn't exist
-Funcdata *Scope::queryFunction(const string &name) const
+Funcdata *Scope::queryFunction(const string &nm) const
 
 {
   vector<Symbol *> symList;
-  queryByName(name,symList);
+  queryByName(nm,symList);
   for(int4 i=0;i<symList.size();++i) {
     Symbol *sym = symList[i];
     FunctionSymbol *funcsym = dynamic_cast<FunctionSymbol *>(sym);
@@ -1270,23 +1306,23 @@ LabSymbol *Scope::queryCodeLabel(const Address &addr) const
 }
 
 /// Look for the immediate child of \b this with a given name
-/// \param name is the child's name
+/// \param nm is the child's name
 /// \param strategy is \b true if hash of the name determines id
 /// \return the child Scope or NULL if there is no child with that name
-Scope *Scope::resolveScope(const string &name,bool strategy) const
+Scope *Scope::resolveScope(const string &nm,bool strategy) const
 
 {
   if (strategy) {
-    uint8 key = hashScopeName(uniqueId, name);
+    uint8 key = hashScopeName(uniqueId, nm);
     ScopeMap::const_iterator iter = children.find(key);
     if (iter == children.end()) return (Scope *)0;
     Scope *scope = (*iter).second;
-    if (scope->name == name)
+    if (scope->name == nm)
       return scope;
   }
-  else if (name.length() > 0 && name[0] <= '9' && name[0] >= '0') {
+  else if (nm.length() > 0 && nm[0] <= '9' && nm[0] >= '0') {
     // Allow the string to directly specify the id
-    istringstream s(name);
+    istringstream s(nm);
     s.unsetf(ios::dec | ios::hex | ios::oct);
     uint8 key;
     s >> key;
@@ -1298,7 +1334,7 @@ Scope *Scope::resolveScope(const string &name,bool strategy) const
     ScopeMap::const_iterator iter;
     for(iter=children.begin();iter!=children.end();++iter) {
       Scope *scope = (*iter).second;
-      if (scope->name == name)
+      if (scope->name == nm)
 	return scope;
     }
   }
@@ -1465,15 +1501,15 @@ const Scope *Scope::findDistinguishingScope(const Scope *op2) const
 }
 
 /// The Symbol is created and added to any name map, but no SymbolEntry objects are created for it.
-/// \param name is the name of the new Symbol
+/// \param nm is the name of the new Symbol
 /// \param ct is a data-type to assign to the new Symbol
 /// \return the new Symbol object
-Symbol *Scope::addSymbol(const string &name,Datatype *ct)
+Symbol *Scope::addSymbol(const string &nm,Datatype *ct)
 
 {
   Symbol *sym;
 
-  sym = new Symbol(owner,name,ct);
+  sym = new Symbol(owner,nm,ct);
   addSymbolInternal(sym);		// Let this scope lay claim to the new object
   return sym;
 }
@@ -1483,18 +1519,18 @@ Symbol *Scope::addSymbol(const string &name,Datatype *ct)
 /// The Symbol object will be created with the given name and data-type.  A single mapping (SymbolEntry)
 /// will be created for the Symbol based on a given storage address for the symbol
 /// and an address for code that accesses the Symbol at that storage location.
-/// \param name is the new name of the Symbol
+/// \param nm is the new name of the Symbol
 /// \param ct is the data-type of the new Symbol
 /// \param addr is the starting address of the Symbol storage
 /// \param usepoint is the point accessing that storage (may be \e invalid)
 /// \return the SymbolEntry matching the new mapping
-SymbolEntry *Scope::addSymbol(const string &name,Datatype *ct,
+SymbolEntry *Scope::addSymbol(const string &nm,Datatype *ct,
 			      const Address &addr,
 			      const Address &usepoint)
 {
   Symbol *sym;
 
-  sym = new Symbol(owner,name,ct);
+  sym = new Symbol(owner,nm,ct);
   addSymbolInternal(sym);
   return addMapPoint(sym,addr,usepoint);
 }
@@ -1542,6 +1578,8 @@ Symbol *Scope::addMapSym(const Element *el)
     sym = new LabSymbol(owner);
   else if (symname == "externrefsymbol")
     sym = new ExternRefSymbol(owner);
+  else if (symname == "facetsymbol")
+    sym = new UnionFacetSymbol(owner);
   else
     throw LowlevelError("Unknown symbol type: "+symname);
   try {		// Protect against duplicate scope errors
@@ -1661,6 +1699,28 @@ Symbol *Scope::addDynamicSymbol(const string &nm,Datatype *ct,const Address &cad
   return sym;
 }
 
+/// \brief Create a symbol that forces display conversion on a constant
+///
+/// \param nm is the equate name to display, which may be empty for an integer conversion
+/// \param format is the type of integer conversion (Symbol::force_hex, Symbol::force_dec, etc.)
+/// \param value is the constant value being converted
+/// \param addr is the address of the p-code op reading the constant
+/// \param hash is the dynamic hash identifying the constant
+/// \return the new EquateSymbol
+Symbol *Scope::addEquateSymbol(const string &nm,uint4 format,uintb value,const Address &addr,uint8 hash)
+
+{
+  Symbol *sym;
+
+  sym = new EquateSymbol(owner,nm,format,value);
+  addSymbolInternal(sym);
+  RangeList rnglist;
+  if (!addr.isInvalid())
+    rnglist.insertRange(addr.getSpace(),addr.getOffset(),addr.getOffset());
+  addDynamicMapInternal(sym,Varnode::mapped,hash,0,1,rnglist);
+  return sym;
+}
+
 /// Create default name given information in the Symbol and possibly a representative Varnode.
 /// This method extracts the crucial properties and then uses the buildVariableName method to
 /// construct the actual name.
@@ -1676,9 +1736,9 @@ string Scope::buildDefaultName(Symbol *sym,int4 &base,Varnode *vn) const
     if (!vn->isAddrTied() && fd != (Funcdata *)0)
       usepoint = vn->getUsePoint(*fd);
     HighVariable *high = vn->getHigh();
-    if (sym->getCategory() == 0 || high->isInput()) {
+    if (sym->getCategory() == Symbol::function_parameter || high->isInput()) {
       int4 index = -1;
-      if (sym->getCategory()==0)
+      if (sym->getCategory()==Symbol::function_parameter)
 	index = sym->getCategoryIndex()+1;
       return buildVariableName(vn->getAddr(),usepoint,sym->getType(),index,vn->getFlags() | Varnode::input);
     }
@@ -1689,7 +1749,7 @@ string Scope::buildDefaultName(Symbol *sym,int4 &base,Varnode *vn) const
     Address addr = entry->getAddr();
     Address usepoint = entry->getFirstUseAddress();
     uint4 flags = usepoint.isInvalid() ? Varnode::addrtied : 0;
-    if (sym->getCategory() == 0) {	// If this is a parameter
+    if (sym->getCategory() == Symbol::function_parameter) {
 	flags |= Varnode::input;
 	int4 index = sym->getCategoryIndex() + 1;
 	return buildVariableName(addr, usepoint, sym->getType(), index, flags);
@@ -1923,7 +1983,7 @@ void ScopeInternal::categorySanity(void)
       for(int4 j=0;j<list.size();++j) {
 	Symbol *sym = list[j];
 	if (sym == (Symbol *)0) continue;
-	setCategory(sym,-1,0);	// Set symbol to have no category
+	setCategory(sym,Symbol::no_category,0);
       }
     }
   }
@@ -1968,6 +2028,12 @@ void ScopeInternal::clearUnlocked(void)
       }
       if (sym->isSizeTypeLocked())
 	resetSizeLockType(sym);
+    }
+    else if (sym->getCategory() == Symbol::equate) {
+      // Note we treat EquateSymbols as locked for purposes of this method
+      // as a typelock (which traditionally prevents a symbol from being cleared)
+      // does not make sense for an equate
+      continue;
     }
     else
       removeSymbol(sym);
@@ -2106,6 +2172,7 @@ void ScopeInternal::setAttribute(Symbol *sym,uint4 attr)
   attr &= (Varnode::typelock | Varnode::namelock | Varnode::readonly | Varnode::incidental_copy |
 	   Varnode::nolocalalias | Varnode::volatil | Varnode::indirectstorage | Varnode::hiddenretparm);
   sym->flags |= attr;
+  sym->checkSizeTypeLock();
 }
 
 void ScopeInternal::clearAttribute(Symbol *sym,uint4 attr)
@@ -2114,6 +2181,7 @@ void ScopeInternal::clearAttribute(Symbol *sym,uint4 attr)
   attr &= (Varnode::typelock | Varnode::namelock | Varnode::readonly | Varnode::incidental_copy |
 	   Varnode::nolocalalias | Varnode::volatil | Varnode::indirectstorage | Varnode::hiddenretparm);
   sym->flags &= ~attr;
+  sym->checkSizeTypeLock();
 }
 
 void ScopeInternal::setDisplayFormat(Symbol *sym,uint4 attr)
@@ -2303,13 +2371,13 @@ SymbolEntry *ScopeInternal::findOverlap(const Address &addr,int4 size) const
   return (SymbolEntry *)0;
 }
 
-void ScopeInternal::findByName(const string &name,vector<Symbol *> &res) const
+void ScopeInternal::findByName(const string &nm,vector<Symbol *> &res) const
 
 {
-  SymbolNameTree::const_iterator iter = findFirstByName(name);
+  SymbolNameTree::const_iterator iter = findFirstByName(nm);
   while(iter != nametree.end()) {
     Symbol *sym = *iter;
-    if (sym->name != name) break;
+    if (sym->name != nm) break;
     res.push_back(sym);
     ++iter;
   }
@@ -2536,8 +2604,11 @@ void ScopeInternal::saveXml(ostream &s) const
       int4 symbolType = 0;
       if (!sym->mapentry.empty()) {
 	const SymbolEntry &entry( *sym->mapentry.front() );
-	if (entry.isDynamic())
-	  symbolType = (sym->getCategory() == 1) ? 2 : 1;
+	if (entry.isDynamic()) {
+	  if (sym->getCategory() == Symbol::union_facet)
+	    continue;		// Don't save override
+	  symbolType = (sym->getCategory() == Symbol::equate) ? 2 : 1;
+	}
       }
       s << "<mapsym";
       if (symbolType == 1)
@@ -2623,15 +2694,15 @@ void ScopeInternal::insertNameTree(Symbol *sym)
 
 /// \brief Find an iterator pointing to the first Symbol in the ordering with a given name
 ///
-/// \param name is the name to search for
+/// \param nm is the name to search for
 /// \return iterator pointing to the first Symbol or nametree.end() if there is no matching Symbol
-SymbolNameTree::const_iterator ScopeInternal::findFirstByName(const string &name) const
+SymbolNameTree::const_iterator ScopeInternal::findFirstByName(const string &nm) const
 
 {
-  Symbol sym((Scope *)0,name,(Datatype *)0);
+  Symbol sym((Scope *)0,nm,(Datatype *)0);
   SymbolNameTree::const_iterator iter = nametree.lower_bound(&sym);
   if (iter == nametree.end()) return iter;
-  if ((*iter)->getName() != name)
+  if ((*iter)->getName() != nm)
     return nametree.end();
   return iter;
 }
@@ -2999,9 +3070,9 @@ Scope *Database::resolveScope(uint8 id) const
 ///
 /// The name is parsed using a \b delimiter that is passed in. The name can
 /// be only partially qualified by passing in a starting Scope, which the
-/// name is assumed to be relative to. Otherwise the name is assumed to be
-/// relative to the global Scope.  The unqualified (base) name of the Symbol
-/// is passed back to the caller.
+/// name is assumed to be relative to. If the starting scope is \b null, or the name
+/// starts with the delimiter, the name is assumed to be relative to the global Scope.
+/// The unqualified (base) name of the Symbol is passed back to the caller.
 /// \param fullname is the qualified Symbol name
 /// \param delim is the delimiter separating names
 /// \param basename will hold the passed back base Symbol name
@@ -3018,10 +3089,15 @@ Scope *Database::resolveScopeFromSymbolName(const string &fullname,const string 
   for(;;) {
     endmark = fullname.find(delim,mark);
     if (endmark == string::npos) break;
-    string scopename = fullname.substr(mark,endmark-mark);
-    start = start->resolveScope(scopename,idByNameHash);
-    if (start == (Scope *)0)	// Was the scope name bad
-      return start;
+    if (endmark == 0) {		// Path is "absolute"
+      start = globalscope;	// Start from the global scope
+    }
+    else {
+      string scopename = fullname.substr(mark,endmark-mark);
+      start = start->resolveScope(scopename,idByNameHash);
+      if (start == (Scope *)0)	// Was the scope name bad
+	return start;
+    }
     mark = endmark + delim.size();
   }
   basename = fullname.substr(mark,endmark);

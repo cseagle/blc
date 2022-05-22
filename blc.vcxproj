@@ -17,27 +17,27 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{8E7ACC53-0733-45E9-BB24-90D2E9D93988}</ProjectGuid>
     <RootNamespace>blc</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release64|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
     <UseOfAtl>Static</UseOfAtl>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -202,11 +202,11 @@
       <OutputFile>$(OutDir)$(ProjectName)64$(TargetExt)</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>..\..\lib\x64_win_vc_64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <ProgramDatabaseFile>$(IntDir)\blc.pdb</ProgramDatabaseFile>
+      <ProgramDatabaseFile>$(IntDir)\blc64.pdb</ProgramDatabaseFile>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention>
       </DataExecutionPrevention>
-      <ImportLibrary>$(IntDir)\blc.lib</ImportLibrary>
+      <ImportLibrary>$(IntDir)\blc64.lib</ImportLibrary>
     </Link>
     <Bscmake>
       <SuppressStartupBanner>true</SuppressStartupBanner>
@@ -220,6 +220,7 @@
     <ClCompile Include="ast.cc" />
     <ClCompile Include="block.cc" />
     <ClCompile Include="blockaction.cc" />
+    <ClCompile Include="callgraph.cc" />
     <ClCompile Include="capability.cc" />
     <ClCompile Include="cast.cc" />
     <ClCompile Include="comment.cc" />
@@ -243,12 +244,15 @@
     <ClCompile Include="funcdata_op.cc" />
     <ClCompile Include="funcdata_varnode.cc" />
     <ClCompile Include="globalcontext.cc" />
+    <ClCompile Include="grammar.tab.cc" />
     <ClCompile Include="graph.cc" />
     <ClCompile Include="heritage.cc" />
     <ClCompile Include="ida_arch.cc" />
     <ClCompile Include="ida_load_image.cc" />
     <ClCompile Include="ida_scope.cc" />
+    <ClCompile Include="ifacedecomp.cc" />
     <ClCompile Include="inject_sleigh.cc" />
+    <ClCompile Include="interface.cc" />
     <ClCompile Include="jumptable.cc" />
     <ClCompile Include="libdecomp.cc" />
     <ClCompile Include="loadimage.cc" />
@@ -283,10 +287,12 @@
     <ClCompile Include="space.cc" />
     <ClCompile Include="stringmanage.cc" />
     <ClCompile Include="subflow.cc" />
+    <ClCompile Include="testfunction.cc" />
     <ClCompile Include="transform.cc" />
     <ClCompile Include="translate.cc" />
     <ClCompile Include="type.cc" />
     <ClCompile Include="typeop.cc" />
+    <ClCompile Include="unionresolve.cc" />
     <ClCompile Include="userop.cc" />
     <ClCompile Include="variable.cc" />
     <ClCompile Include="varmap.cc" />

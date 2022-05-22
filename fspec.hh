@@ -56,7 +56,15 @@ public:
     smallsize_inttype = 32,	///< Assume values that are below the max \b size are sign OR zero extended based on integer type
     smallsize_floatext = 64,	///< Assume values smaller than max \b size are floating-point extended to full size
     extracheck_high = 128,	///< Perform extra checks during parameter recovery on most sig portion of the double
-    extracheck_low = 256	///< Perform extra checks during parameter recovery on least sig portion of the double
+    extracheck_low = 256,	///< Perform extra checks during parameter recovery on least sig portion of the double
+    is_grouped = 512,		///< This entry is grouped with other entries
+    overlapping = 0x100		///< Overlaps an earlier entry (and doesn't consume additional resource slots)
+  };
+  enum {
+    no_containment,		///< Range neither contains nor is contained by a ParamEntry
+    contains_unjustified,	///< ParamEntry contains range, but the range does not cover the least significant bytes
+    contains_justified,		///< ParamEntry contains range, which covers the least significant bytes
+    contained_by		///< ParamEntry is contained by the range
   };
 private:
   uint4 flags;			///< Boolean properties of the parameter
@@ -70,34 +78,40 @@ private:
   int4 alignment;		///< How much alignment (0 means only 1 logical value is allowed)
   int4 numslots;		///< (Maximum) number of slots that can store separate parameters
   JoinRecord *joinrec;		///< Non-null if this is logical variable from joined pieces
-  void resolveJoin(void); 	///< If the ParamEntry is initialized with a \e join address, cache the join record
+  static const ParamEntry *findEntryByStorage(const list<ParamEntry> &entryList,const VarnodeData &vn);
+  void resolveJoin(list<ParamEntry> &curList); 	///< Make adjustments for a \e join ParamEntry
+  void resolveOverlap(list<ParamEntry> &curList);	///< Make adjustments for ParamEntry that overlaps others
 
   /// \brief Is the logical value left-justified within its container
   bool isLeftJustified(void) const { return (((flags&force_left_justify)!=0)||(!spaceid->isBigEndian())); }
 public:
   ParamEntry(int4 grp) { group=grp; }			///< Constructor for use with restoreXml
-  ParamEntry(type_metatype t,int4 grp,int4 grpsize,const Address &loc,int4 sz,int4 mnsz,int4 align,bool normalstack);
   int4 getGroup(void) const { return group; }		///< Get the group id \b this belongs to
   int4 getGroupSize(void) const { return groupsize; }	///< Get the number of groups occupied by \b this
   int4 getSize(void) const { return size; }		///< Get the size of the memory range in bytes.
   int4 getMinSize(void) const { return minsize; }	///< Get the minimum size of a logical value contained in \b this
   int4 getAlign(void) const { return alignment; }	///< Get the alignment of \b this entry
+  JoinRecord *getJoinRecord(void) const { return joinrec; }
   type_metatype getType(void) const { return type; }	///< Get the data-type class associated with \b this
   bool isExclusion(void) const { return (alignment==0); }	///< Return \b true if this holds a single parameter exclusively
   bool isReverseStack(void) const { return ((flags & reverse_stack)!=0); }	///< Return \b true if parameters are allocated in reverse order
-  bool contains(const ParamEntry &op2) const;		///< Does \b this contain the indicated entry.
+  bool isGrouped(void) const { return ((flags & is_grouped)!=0); }	///< Return \b true if \b this is grouped with other entries
+  bool isOverlap(void) const { return ((flags & overlapping)!=0); }	///< Return \b true if \b this overlaps another entry
+  bool subsumesDefinition(const ParamEntry &op2) const;	///< Does \b this subsume the definition of the given ParamEntry
   bool containedBy(const Address &addr,int4 sz) const;	///< Is this entry contained by the given range
+  bool intersects(const Address &addr,int4 sz) const;	///< Does \b this intersect the given range in some way
   int4 justifiedContain(const Address &addr,int4 sz) const;	///< Calculate endian aware containment
   bool getContainer(const Address &addr,int4 sz,VarnodeData &res) const;
+  bool contains(const ParamEntry &op2) const;	///< Does \this contain the given entry (as a subpiece)
   OpCode assumedExtension(const Address &addr,int4 sz,VarnodeData &res) const;
   int4 getSlot(const Address &addr,int4 skip) const;
   AddrSpace *getSpace(void) const { return spaceid; }	///< Get the address space containing \b this entry
   uintb getBase(void) const { return addressbase; }	///< Get the starting offset of \b this entry
   Address getAddrBySlot(int4 &slot,int4 sz) const;
-  void restoreXml(const Element *el,const AddrSpaceManager *manage,bool normalstack);
-  void extraChecks(list<ParamEntry> &entry);
+  void restoreXml(const Element *el,const AddrSpaceManager *manage,bool normalstack,bool grouped,list<ParamEntry> &curList);
   bool isParamCheckHigh(void) const { return ((flags & extracheck_high)!=0); }	///< Return \b true if there is a high overlap
   bool isParamCheckLow(void) const { return ((flags & extracheck_low)!=0); }	///< Return \b true if there is a low overlap
+  static void orderWithinGroup(const ParamEntry &entry1,const ParamEntry &entry2);	///< Enforce ParamEntry group ordering rules
 };
 
 /// \brief Class for storing ParamEntry objects in an interval range (rangemap)
@@ -160,11 +174,13 @@ public:
     used = 2,			///< Trial is definitely used  (final verdict)
     defnouse = 4,		///< Trial is definitely not used
     active = 8,			///< Trial looks active (hint that it is used)
-    unref = 16,			///< There is no direct reference to this parameter trial
-    killedbycall = 32,		///< Data in this location is unlikely to flow thru a func and still be a param
-    rem_formed = 64,		///< The trial is built out of a remainder operation
-    indcreate_formed = 128,	///< The trial is built out of an indirect creation
-    condexe_effect = 256	///< This trial may be affected by conditional execution
+    unref = 0x10,		///< There is no direct reference to this parameter trial
+    killedbycall = 0x20,	///< Data in this location is unlikely to flow thru a func and still be a param
+    rem_formed = 0x40,		///< The trial is built out of a remainder operation
+    indcreate_formed = 0x80,	///< The trial is built out of an indirect creation
+    condexe_effect = 0x100,	///< This trial may be affected by conditional execution
+    ancestor_realistic = 0x200,	///< Trial has a realistic ancestor
+    ancestor_solid = 0x400	///< Solid movement into the Varnode
   };
 private:
   uint4 flags;			///< Boolean properties of the trial
@@ -201,6 +217,10 @@ public:
   bool isIndCreateFormed(void) const { return ((flags & indcreate_formed)!=0); }	///< Is \b this trial formed by \e indirect \e creation
   void setCondExeEffect(void) { flags |= condexe_effect; }	///< Mark \b this trial as possibly affected by conditional execution
   bool hasCondExeEffect(void) const { return ((flags & condexe_effect)!=0); }	///< Is \b this trial possibly affected by conditional execution
+  void setAncestorRealistic(void) { flags |= ancestor_realistic; }	///< Mark \b this as having a realistic ancestor
+  bool hasAncestorRealistic(void) const { return ((flags & ancestor_realistic)!=0); }	///< Does \b this have a realistic ancestor
+  void setAncestorSolid(void) { flags |= ancestor_solid; }	///< Mark \b this as showing solid movement into Varnode
+  bool hasAncestorSolid(void) const { return ((flags & ancestor_solid)!=0); }	///< Does \b this show solid movement into Varnode
   int4 slotGroup(void) const { return entry->getSlot(addr,size-1); }	///< Get position of \b this within its parameter \e group
   void setAddress(const Address &ad,int4 sz) { addr=ad; size=sz; }	///< Reset the memory range of \b this trial
   ParamTrial splitHi(int4 sz) const;			///< Create a trial representing the first part of \b this
@@ -281,12 +301,13 @@ public:
 /// value of the pointer
 class FspecSpace : public AddrSpace {
 public:
-  FspecSpace(AddrSpaceManager *m,const Translate *t,const string &nm,int4 ind);	///< Constructor
+  FspecSpace(AddrSpaceManager *m,const Translate *t,int4 ind);	///< Constructor
   virtual void saveXmlAttributes(ostream &s,uintb offset) const;
   virtual void saveXmlAttributes(ostream &s,uintb offset,int4 size) const;
   virtual void printRaw(ostream &s,uintb offset) const;
   virtual void saveXml(ostream &s) const;
   virtual void restoreXml(const Element *el);
+  static const string NAME;		///< Reserved name for the fspec space
 };
 
 /// \brief Basic elements of a parameter: address, data-type, properties
@@ -314,26 +335,26 @@ public:
   enum {
     unaffected = 1,	///< The sub-function does not change the value at all
     killedbycall = 2,	///< The memory is changed and is completely unrelated to its original value
-    return_address = 3,	///< The memory is being used to pass back a return value from the sub-function
+    return_address = 3,	///< The memory is being used to store the return address
     unknown_effect = 4	///< An unknown effect (indicates the absence of an EffectRecord)
   };
 private:
-  VarnodeData address;		///< The memory range affected
+  VarnodeData range;		///< The memory range affected
   uint4 type;			///< The type of effect
 public:
   EffectRecord(void) {}		///< Constructor for use with restoreXml()
-  EffectRecord(const EffectRecord &op2) { address = op2.address; type = op2.type; }	///< Copy constructor
+  EffectRecord(const EffectRecord &op2) { range = op2.range; type = op2.type; }	///< Copy constructor
   EffectRecord(const Address &addr,int4 size);		///< Construct a memory range with an unknown effect
   EffectRecord(const ParamEntry &entry,uint4 t);	///< Construct an effect on a parameter storage location
   EffectRecord(const VarnodeData &addr,uint4 t);	///< Construct an effect on a memory range
   uint4 getType(void) const { return type; }		///< Get the type of effect
-  Address getAddress(void) const { return Address(address.space,address.offset); }	///< Get the starting address of the affected range
-  int4 getSize(void) const { return address.size; }	///< Get the size of the affected range
-  bool operator<(const EffectRecord &op2) const;	///< Comparator for EffectRecords
+  Address getAddress(void) const { return Address(range.space,range.offset); }	///< Get the starting address of the affected range
+  int4 getSize(void) const { return range.size; }	///< Get the size of the affected range
   bool operator==(const EffectRecord &op2) const;	///< Equality operator
   bool operator!=(const EffectRecord &op2) const;	///< Inequality operator
   void saveXml(ostream &s) const;			///< Save the record to an XML stream
   void restoreXml(uint4 grouptype,const Element *el,const AddrSpaceManager *manage);	///< Restore the record from an XML stream
+  static bool compareByAddress(const EffectRecord &op1,const EffectRecord &op2);
 };
 
 /// A group of ParamEntry objects that form a complete set for passing
@@ -349,6 +370,7 @@ public:
     p_standard,		///< Standard input parameter model
     p_standard_out,	///< Standard output (return value) model
     p_register,		///< Unordered parameter passing locations model
+    p_register_out,	///< Multiple possible return value locations model
     p_merged		///< A merged model (multiple models merged together)
   };
   virtual ~ParamList(void) {}			///< Destructor
@@ -358,11 +380,9 @@ public:
   ///
   /// If we know the function prototype, recover how parameters are actually stored using the model.
   /// \param proto is the ordered list of data-types
-  /// \param isinput is \b true for the input prototype, \b false for output prototype
   /// \param typefactory is the TypeFactory (for constructing pointers)
   /// \param res will contain the storage locations corresponding to the datatypes
-  virtual void assignMap(const vector<Datatype *> &proto,bool isinput,
-			 TypeFactory &typefactory,vector<ParameterPieces> &res) const=0;
+  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const=0;
 
   /// \brief Given an unordered list of storage locations, calculate a function prototype
   ///
@@ -396,10 +416,11 @@ public:
   /// \brief Characterize whether the given range overlaps parameter storage
   ///
   /// Does the range naturally fit inside a potential parameter entry from this list or does
-  /// it contain a parameter entry. Return one of three values indicating this characterization:
-  ///   - 0 means there is no intersection between the range and any parameter in this list
-  ///   - 1 means that at least one parameter contains the range in a properly justified manner
-  ///   - 2 means no parameter contains the range, but the range contains at least one ParamEntry
+  /// it contain a parameter entry. Return one of four enumerations indicating this characterization:
+  ///   - no_containment - there is no containment between the range and any parameter in this list
+  ///   - contains_unjustified - at least one parameter contains the range
+  ///   - contains_justified - at least one parameter contains this range as its least significant bytes
+  ///   - contained_by - no parameter contains this range, but the range contains at least one parameter
   /// \param loc is the starting address of the given range
   /// \param size is the number of bytes in the given range
   /// \return the characterization code
@@ -501,27 +522,34 @@ protected:
   int4 maxdelay;			///< Maximum heritage delay across all parameters
   int4 pointermax; 			///< If non-zero, maximum size of a data-type before converting to a pointer
   bool thisbeforeret;			///< Does a \b this parameter come before a hidden return parameter
-  int4 nonfloatgroup;			///< Group of first entry which is not marked float
+  int4 resourceTwoStart;		///< If there are two resource sections, the group of the first entry in the second section
   list<ParamEntry> entry;		///< The ordered list of parameter entries
   vector<ParamEntryResolver *> resolverMap;	///< Map from space id to resolver
   AddrSpace *spacebase;			///< Address space containing relative offset parameters
   const ParamEntry *findEntry(const Address &loc,int4 size) const;	///< Given storage location find matching ParamEntry
   Address assignAddress(const Datatype *tp,vector<int4> &status) const;	///< Assign storage for given parameter data-type
+  const ParamEntry *selectUnreferenceEntry(int4 grp,type_metatype prefType) const;	///< Select entry to fill an unreferenced param
   void buildTrialMap(ParamActive *active) const;	///< Build map from parameter trials to model ParamEntrys
-  void separateFloat(ParamActive *active,int4 &floatstart,int4 &floatstop,int4 &start,int4 &stop) const;
-  void forceExclusionGroup(ParamActive *active) const;
-  void forceNoUse(ParamActive *active,int4 start,int4 stop) const;
-  void forceInactiveChain(ParamActive *active,int4 maxchain,int4 start,int4 stop) const;
+  void separateSections(ParamActive *active,int4 &oneStart,int4 &oneStop,int4 &twoStart,int4 &twoStop) const;
+  static void markGroupNoUse(ParamActive *active,int4 groupUpper,int4 groupStart,int4 index);
+  static void markBestInactive(ParamActive *active,int4 group,int4 groupStart,type_metatype prefType);
+  static void forceExclusionGroup(ParamActive *active);
+  static void forceNoUse(ParamActive *active,int4 start,int4 stop);
+  static void forceInactiveChain(ParamActive *active,int4 maxchain,int4 start,int4 stop,int4 groupstart);
   void calcDelay(void);		///< Calculate the maximum heritage delay for any potential parameter in this list
+  void addResolverRange(AddrSpace *spc,uintb first,uintb last,ParamEntry *paramEntry,int4 position);
   void populateResolver(void);	///< Build the ParamEntry resolver maps
+  void parsePentry(const Element *el,const AddrSpaceManager *manage,vector<EffectRecord> &effectlist,
+		   int4 groupid,bool normalstack,bool autokill,bool splitFloat,bool grouped);
+  void parseGroup(const Element *el,const AddrSpaceManager *manage,vector<EffectRecord> &effectlist,
+		  int4 groupid,bool normalstack,bool autokill,bool splitFloat);
 public:
   ParamListStandard(void) {}						///< Construct for use with restoreXml()
   ParamListStandard(const ParamListStandard &op2);			///< Copy constructor
   virtual ~ParamListStandard(void);
   const list<ParamEntry> &getEntry(void) const { return entry; }	///< Get the list of parameter entries
   virtual uint4 getType(void) const { return p_standard; }
-  virtual void assignMap(const vector<Datatype *> &proto,bool isinput,
-			 TypeFactory &typefactory,vector<ParameterPieces> &res) const;
+  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
   virtual void fillinMap(ParamActive *active) const;
   virtual bool checkJoin(const Address &hiaddr,int4 hisize,const Address &loaddr,int4 losize) const;
   virtual bool checkSplit(const Address &loc,int4 size,int4 splitpoint) const;
@@ -538,23 +566,21 @@ public:
   virtual ParamList *clone(void) const;
 };
 
-/// \brief A standard model for passing back return values from a function
+/// \brief A model for passing back return values from a function
 ///
-/// This models a resource list of potential storage locations for a return value,
-/// at most 1 of which will be chosen for a given function. Order only matters in that the
-/// first ParamEntry that fits is used. If no entry fits, the return value is
-/// converted to a pointer data-type, storage allocation is attempted again, and the
-/// return value is marked as a \e hidden return parameter to inform the input model.
-class ParamListStandardOut : public ParamListStandard {
+/// This is a resource list of potential storage locations for a return value,
+/// at most 1 of which will be chosen for a given function. This models a simple strategy
+/// for selecting a storage location. When assigning based on data-type (assignMap), the first list
+/// entry that fits is chosen.  When assigning from a set of actively used locations (fillinMap),
+/// this class chooses the location that is the closest fitting match to an entry in the resource list.
+class ParamListRegisterOut : public ParamListStandard {
 public:
-  ParamListStandardOut(void) : ParamListStandard() {}		///< Constructor
-  ParamListStandardOut(const ParamListStandardOut &op2) : ParamListStandard(op2) {}	///< Copy constructor
-  virtual uint4 getType(void) const { return p_standard_out; }
-  virtual void assignMap(const vector<Datatype *> &proto,bool isinput,
-			 TypeFactory &typefactory,vector<ParameterPieces> &res) const;
+  ParamListRegisterOut(void) : ParamListStandard() {}		///< Constructor
+  ParamListRegisterOut(const ParamListRegisterOut &op2) : ParamListStandard(op2) {}	///< Copy constructor
+  virtual uint4 getType(void) const { return p_register_out; }
+  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
   virtual void fillinMap(ParamActive *active) const;
   virtual bool possibleParam(const Address &loc,int4 size) const;
-  virtual void restoreXml(const Element *el,const AddrSpaceManager *manage,vector<EffectRecord> &effectlist,bool normalstack);
   virtual ParamList *clone(void) const;
 };
 
@@ -574,6 +600,24 @@ public:
   virtual ParamList *clone(void) const;
 };
 
+/// \brief A standard model for returning output parameters from a function
+///
+/// This has a more involved assignment strategy than its parent class.
+/// Entries in the resource list are treated as a \e group, meaning that only one can
+/// fit the desired storage size and type attributes of the return value. If no entry
+/// fits, the return value is converted to a pointer data-type, storage allocation is
+/// attempted again, and the return value is marked as a \e hidden return parameter
+/// to inform the input model.
+class ParamListStandardOut : public ParamListRegisterOut {
+public:
+  ParamListStandardOut(void) : ParamListRegisterOut() {}	///< Constructor for use with restoreXml()
+  ParamListStandardOut(const ParamListStandardOut &op2) : ParamListRegisterOut(op2) {}	///< Copy constructor
+  virtual uint4 getType(void) const { return p_standard_out; }
+  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
+  virtual void restoreXml(const Element *el,const AddrSpaceManager *manage,vector<EffectRecord> &effectlist,bool normalstack);
+  virtual ParamList *clone(void) const;
+};
+
 /// \brief A union of other input parameter passing models
 ///
 /// This model is viewed as a union of a constituent set of resource lists.
@@ -589,8 +633,7 @@ public:
   void foldIn(const ParamListStandard &op2);				///< Add another model to the union
   void finalize(void) { populateResolver(); }				///< Fold-ins are finished, finalize \b this
   virtual uint4 getType(void) const { return p_merged; }
-  virtual void assignMap(const vector<Datatype *> &proto,bool isinput,
-			 TypeFactory &typefactory,vector<ParameterPieces> &res) const {
+  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const {
     throw LowlevelError("Cannot assign prototype before model has been resolved"); }
   virtual void fillinMap(ParamActive *active) const {
     throw LowlevelError("Cannot determine prototype before model has been resolved"); }
@@ -648,6 +691,7 @@ public:
   virtual ~ProtoModel(void);				///< Destructor
   const string &getName(void) const { return name; }	///< Get the name of the prototype model
   Architecture *getArch(void) const { return glb; }	///< Get the owning Architecture
+  const ProtoModel *getAliasParent(void) const { return compatModel; }	///< Return \e model \b this is an alias of (or null)
   uint4 hasEffect(const Address &addr,int4 size) const;	///< Determine side-effect of \b this on the given memory range
   int4 getExtraPop(void) const { return extrapop; }	///< Get the stack-pointer \e extrapop for \b this model
   void setExtraPop(int4 ep) { extrapop = ep; }		///< Set the stack-pointer \e extrapop
@@ -710,21 +754,37 @@ public:
   const RangeList &getParamRange(void) const { return paramrange; }	///< Get the range of (possible) stack parameters
   vector<EffectRecord>::const_iterator effectBegin(void) const { return effectlist.begin(); }	///< Get an iterator to the first EffectRecord
   vector<EffectRecord>::const_iterator effectEnd(void) const { return effectlist.end(); }	///< Get an iterator to the last EffectRecord
-  int4 numLikelyTrash(void) const { return likelytrash.size(); }	///< Get the number of \e likelytrash locations
-  const VarnodeData &getLikelyTrash(int4 i) const { return likelytrash[i]; }	///< Get the i-th \e likelytrashh location
+  vector<VarnodeData>::const_iterator trashBegin(void) const { return likelytrash.begin(); }	///< Get an iterator to the first \e likelytrash
+  vector<VarnodeData>::const_iterator trashEnd(void) const { return likelytrash.end(); }	///< Get an iterator to the last \e likelytrash
 
   /// \brief Characterize whether the given range overlaps parameter storage
   ///
   /// Does the range naturally fit inside a potential parameter entry from this model or does
-  /// it contain a parameter entry. Return one of three values indicating this characterization:
-  ///   - 0 means there is no intersection between the range and any ParamEntry
-  ///   - 1 means that at least one ParamEntry contains the range in a properly justified manner
-  ///   - 2 means no ParamEntry contains the range, but the range contains at least one ParamEntry
+  /// it contain a parameter entry. Return one of four values indicating this characterization:
+  ///   - no_containment - there is no containment between the range and any parameter in this list
+  ///   - contains_unjustified - at least one parameter contains the range
+  ///   - contains_justified - at least one parameter contains this range as its least significant bytes
+  ///   - contained_by - no parameter contains this range, but the range contains at least one parameter
   /// \param loc is the starting address of the given range
   /// \param size is the number of bytes in the given range
   /// \return the characterization code
   int4 characterizeAsInputParam(const Address &loc,int4 size) const {
     return input->characterizeAsParam(loc, size);
+  }
+
+  /// \brief Characterize whether the given range overlaps output storage
+  ///
+  /// Does the range naturally fit inside a potential output entry from this model or does
+  /// it contain an output entry. Return one of four values indicating this characterization:
+  ///   - no_containment - there is no containment between the range and any parameter in this list
+  ///   - contains_unjustified - at least one parameter contains the range
+  ///   - contains_justified - at least one parameter contains this range as its least significant bytes
+  ///   - contained_by - no parameter contains this range, but the range contains at least one parameter
+  /// \param loc is the starting address of the given range
+  /// \param size is the number of bytes in the given range
+  /// \return the characterization code
+  int4 characterizeAsOutput(const Address &loc,int4 size) const {
+    return output->characterizeAsParam(loc, size);
   }
 
   /// \brief Does the given storage location make sense as an input parameter
@@ -817,6 +877,16 @@ public:
     return input->getBiggestContainedParam(loc, size, res);
   }
 
+  /// \brief Pass-back the biggest possible output parameter contained within the given range
+  ///
+  /// \param loc is the starting address of the given range
+  /// \param size is the number of bytes in the range
+  /// \param res will hold the storage description being passed back
+  /// \return \b true if there is at least one possible output parameter contained in the range
+  bool getBiggestContainedOutput(const Address &loc,int4 size,VarnodeData &res) const {
+    return output->getBiggestContainedParam(loc, size, res);
+  }
+
   AddrSpace *getSpacebase(void) const { return input->getSpacebase(); }	///< Get the stack space associated with \b this model
   bool isStackGrowsNegative(void) const { return stackgrowsnegative; }	///< Return \b true if the stack \e grows toward smaller addresses
   bool hasThisPointer(void) const { return hasThis; }			///< Is \b this a model for (non-static) class methods
@@ -841,6 +911,7 @@ public:
   virtual bool isMerged(void) const { return false; }	///< Is \b this a merged prototype model
   virtual void restoreXml(const Element *el);		///< Restore \b this model from an XML stream
   static uint4 lookupEffect(const vector<EffectRecord> &efflist,const Address &addr,int4 size);
+  static int4 lookupRecord(const vector<EffectRecord> &efflist,int4 listSize,const Address &addr,int4 size);
 };
 
 /// \brief Class for calculating "goodness of fit" of parameter trials against a prototype model
@@ -1187,6 +1258,10 @@ class FuncProto {
   int4 injectid;		///< (If non-negative) id of p-code snippet that should replace this function
   int4 returnBytesConsumed;	///< Number of bytes of return value that are consumed by callers (0 = all bytes)
   void updateThisPointer(void);	///< Make sure any "this" parameter is properly marked
+  void saveEffectXml(ostream &s) const;		///< Save any overriding EffectRecords to XML stream
+  void saveLikelyTrashXml(ostream &s) const;	///< Save any overriding likelytrash registers to XML stream
+  void restoreEffectXml(void);	///< Merge in any EffectRecord overrides
+  void restoreLikelyTrashXml(void);	///< Merge in any \e likelytrash overrides
 protected:
   void paramShift(int4 paramshift);	///< Add parameters to the front of the input parameter list
   bool isParamshiftApplied(void) const { return ((flags&paramshift_applied)!=0); }	///< Has a parameter shift been applied
@@ -1360,9 +1435,10 @@ public:
   uint4 hasEffect(const Address &addr,int4 size) const;
   vector<EffectRecord>::const_iterator effectBegin(void) const;	///< Get iterator to front of EffectRecord list
   vector<EffectRecord>::const_iterator effectEnd(void) const;	///< Get iterator to end of EffectRecord list
-  int4 numLikelyTrash(void) const;				///< Get the number of \e likely-trash locations
-  const VarnodeData &getLikelyTrash(int4 i) const;		///< Get the i-th \e likely-trash location
+  vector<VarnodeData>::const_iterator trashBegin(void) const;	///< Get iterator to front of \e likelytrash list
+  vector<VarnodeData>::const_iterator trashEnd(void) const;	///< Get iterator to end of \e likelytrash list
   int4 characterizeAsInputParam(const Address &addr,int4 size) const;
+  int4 characterizeAsOutput(const Address &addr,int4 size) const;
   bool possibleInputParam(const Address &addr,int4 size) const;
   bool possibleOutputParam(const Address &addr,int4 size) const;
 
@@ -1412,6 +1488,9 @@ public:
 
   /// \brief Pass-back the biggest potential input parameter contained within the given range
   bool getBiggestContainedInputParam(const Address &loc,int4 size,VarnodeData &res) const;
+
+  /// \brief Pass-back the biggest potential output storage location contained within the given range
+  bool getBiggestContainedOutput(const Address &loc,int4 size,VarnodeData &res) const;
 
   bool isCompatible(const FuncProto &op2) const;
   AddrSpace *getSpacebase(void) const { return model->getSpacebase(); }		///< Get the \e stack address space
@@ -1553,28 +1632,30 @@ inline const ParamTrial &ParamActive::getTrialForInputVarnode(int4 slot) const
   return trial[slot];
 }
 
-/// Sort on the memory range, then the effect type
-/// \param op2 is the other record to compare with \b this
+/// \brief Compare two EffectRecords by their start Address
+///
+/// \param op1 is the first record to compare
+/// \param op2 is the other record to compare
 /// \return \b true if \b this should be ordered before the other record
-inline bool EffectRecord::operator<(const EffectRecord &op2) const
+inline bool EffectRecord::compareByAddress(const EffectRecord &op1,const EffectRecord &op2)
 
 {
-  if (address < op2.address) return true;
-  if (address != op2.address) return false;
-  return (type < op2.type);
+  if (op1.range.space != op2.range.space)
+    return (op1.range.space->getIndex() < op2.range.space->getIndex());
+  return (op1.range.offset < op2.range.offset);
 }
 
 inline bool EffectRecord::operator==(const EffectRecord &op2) const
 
 {
-  if (address != op2.address) return false;
+  if (range != op2.range) return false;
   return (type == op2.type);
 }
 
 inline bool EffectRecord::operator!=(const EffectRecord &op2) const
 
 {
-  if (address != op2.address) return true;
+  if (range != op2.range) return true;
   return (type != op2.type);
 }
 

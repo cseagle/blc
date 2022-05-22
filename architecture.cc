@@ -27,7 +27,7 @@
 vector<ArchitectureCapability *> ArchitectureCapability::thelist;
 
 const uint4 ArchitectureCapability::majorversion = 4;
-const uint4 ArchitectureCapability::minorversion = 0;
+const uint4 ArchitectureCapability::minorversion = 1;
 
 /// This builds a list of just the ArchitectureCapability extensions
 void ArchitectureCapability::initialize(void)
@@ -229,7 +229,6 @@ AddrSpace *Architecture::getSpaceBySpacebase(const Address &loc,int4 size) const
     }
   }
   throw LowlevelError("Unable to find entry for spacebase register");
-  return (AddrSpace *)0;
 }
 
 /// Look-up the laned register record associated with a specific storage location. Currently, the
@@ -286,7 +285,6 @@ void Architecture::clearAnalysis(Funcdata *fd)
   fd->clear();			// Clear stuff internal to function
   // Clear out any analysis generated comments
   commentdb->clearType(fd->getAddress(),Comment::warning|Comment::warningheader);
-  stringManager->clear();
 }
 
 /// Symbols do not necessarily need to be available for the decompiler.
@@ -374,7 +372,7 @@ void Architecture::setPrintLanguage(const string &nm)
   ostream *t = print->getOutputStream();
   print = capa->buildLanguage(this);
   print->setOutputStream(t);	// Restore settings from previous language
-  print->getCastStrategy()->setTypeFactory(types);
+  print->initializeFromArchitecture();
   if (printxml)
     print->setXML(true);
   printlist.push_back(print);
@@ -646,9 +644,9 @@ void Architecture::restoreFromSpec(DocumentStorage &store)
   translate = newtrans;
   modifySpaces(newtrans);	// Give architecture chance to modify spaces, before copying
   copySpaces(newtrans);
-  insertSpace( new FspecSpace(this,translate,"fspec",numSpaces()));
-  insertSpace( new IopSpace(this,translate,"iop",numSpaces()));
-  insertSpace( new JoinSpace(this,translate,"join",numSpaces()));
+  insertSpace( new FspecSpace(this,translate,numSpaces()));
+  insertSpace( new IopSpace(this,translate,numSpaces()));
+  insertSpace( new JoinSpace(this,translate,numSpaces()));
   userops.initialize(this);
   if (translate->getAlignment() <= 8)
     min_funcsymbol_size = translate->getAlignment();
@@ -749,6 +747,7 @@ void Architecture::parseDynamicRule(const Element *el)
 /// This handles the \<prototype> and \<resolveprototype> tags. It builds the
 /// ProtoModel object based on the tag and makes it available generally to the decompiler.
 /// \param el is the XML tag element
+/// \return the new ProtoModel object
 ProtoModel *Architecture::parseProto(const Element *el)
 
 {
@@ -764,8 +763,9 @@ ProtoModel *Architecture::parseProto(const Element *el)
   
   ProtoModel *other = protoModels[res->getName()];
   if (other != (ProtoModel *)0) {
+    string errMsg = "Duplicate ProtoModel name: " + res->getName();
     delete res;
-    throw LowlevelError("Duplicate ProtoModel name: "+res->getName());
+    throw LowlevelError(errMsg);
   }
   protoModels[res->getName()] = res;
   return res;
@@ -831,9 +831,9 @@ void Architecture::parseGlobal(const Element *el)
       // We need to duplicate the range being marked as global into the overlay space(s)
       int4 num = numSpaces();
       for(int4 i=0;i<num;++i) {
-        OverlaySpace *ospc = (OverlaySpace *)getSpace(i);
+        AddrSpace *ospc = getSpace(i);
         if (ospc == (AddrSpace *)0 || !ospc->isOverlay()) continue;
-        if (ospc->getBaseSpace() != range.getSpace()) continue;
+        if (ospc->getContain() != range.getSpace()) continue;
         symboltab->addRange(scope,ospc,range.getFirst(),range.getLast());
       }
     }
@@ -845,14 +845,14 @@ void Architecture::addOtherSpace(void)
 
 {
   Scope *scope = symboltab->getGlobalScope();
-  AddrSpace *otherSpace = getSpaceByName("OTHER");
+  AddrSpace *otherSpace = getSpaceByName(OtherSpace::NAME);
   symboltab->addRange(scope,otherSpace,0,otherSpace->getHighest());
   if (otherSpace->isOverlayBase()) {
     int4 num = numSpaces();
     for(int4 i=0;i<num;++i){
       AddrSpace *ospc = getSpace(i);
       if (!ospc->isOverlay()) continue;
-      if (((OverlaySpace *)ospc)->getBaseSpace() != otherSpace) continue;
+      if (ospc->getContain() != otherSpace) continue;
       symboltab->addRange(scope,ospc,0,otherSpace->getHighest());
     }
   }
@@ -1102,6 +1102,26 @@ void Architecture::parseAggressiveTrim(const Element *el)
   }
 }
 
+/// Clone the named ProtoModel, attaching it to another name.
+/// \param aliasName is the new name to assign
+/// \param parentName is the name of the parent model
+void Architecture::createModelAlias(const string &aliasName,const string &parentName)
+
+{
+  map<string,ProtoModel *>::const_iterator iter = protoModels.find(parentName);
+  if (iter == protoModels.end())
+    throw LowlevelError("Requesting non-existent prototype model: "+parentName);
+  ProtoModel *model = (*iter).second;
+  if (model->isMerged())
+    throw LowlevelError("Cannot make alias of merged model: "+parentName);
+  if (model->getAliasParent() != (const ProtoModel *)0)
+    throw LowlevelError("Cannot make alias of an alias: "+parentName);
+  iter = protoModels.find(aliasName);
+  if (iter != protoModels.end())
+    throw LowlevelError("Duplicate ProtoModel name: "+aliasName);
+  protoModels[aliasName] = new ProtoModel(aliasName,*model);
+}
+
 /// This looks for the \<processor_spec> tag and and sets configuration
 /// parameters based on it.
 /// \param store is the document store holding the tag
@@ -1217,7 +1237,33 @@ void Architecture::parseCompilerConfig(DocumentStorage &store)
       parseDeadcodeDelay(*iter);
     else if (elname == "inferptrbounds")
       parseInferPtrBounds(*iter);
+    else if (elname == "modelalias") {
+      const Element *el = *iter;
+      string aliasName = el->getAttributeValue("name");
+      string parentName = el->getAttributeValue("parent");
+      createModelAlias(aliasName, parentName);
+    }
   }
+
+  el = store.getTag("specextensions");		// Look for any user-defined configuration document
+  if (el != (const Element *)0) {
+    const List &userlist(el->getChildren());
+    for(iter=userlist.begin();iter!=userlist.end();++iter) {
+      const string &elname( (*iter)->getName() );
+      if (elname == "prototype")
+        parseProto(*iter);
+      else if (elname == "callfixup") {
+        pcodeinjectlib->restoreXmlInject(archid+" : compiler spec", (*iter)->getAttributeValue("name"),
+					 InjectPayload::CALLFIXUP_TYPE, *iter);
+      }
+      else if (elname == "callotherfixup") {
+        userops.parseCallOtherFixup(*iter,this);
+      }
+      else if (elname == "global")
+        globaltags.push_back(*iter);
+    }
+  }
+
   // <global> tags instantiate the base symbol table
   // They need to know about all spaces, so it must come
   // after parsing of <stackpointer> and <spacebase>
@@ -1235,8 +1281,7 @@ void Architecture::parseCompilerConfig(DocumentStorage &store)
   // We must have a __thiscall calling convention
   map<string,ProtoModel *>::iterator miter = protoModels.find("__thiscall");
   if (miter == protoModels.end()) { // If __thiscall doesn't exist we clone it off of the default
-    ProtoModel *thismodel = new ProtoModel("__thiscall",*defaultfp);
-    protoModels["__thiscall"] = thismodel;
+    createModelAlias("__thiscall",defaultfp->getName());
   }
   userops.setDefaults(this);
   initializeSegments();
@@ -1297,7 +1342,7 @@ void Architecture::init(DocumentStorage &store)
   buildDatabase(store);
 
   restoreFromSpec(store);
-  print->getCastStrategy()->setTypeFactory(types);
+  print->initializeFromArchitecture();
   symboltab->adjustCaches();	// In case the specs created additional address spaces
   postSpecFile();		// Let subclasses do things after translate is ready
 
@@ -1343,8 +1388,8 @@ Address SegmentedResolver::resolve(uintb val,int4 sz,const Address &point,uintb 
       uintb base = glb->context->getTrackedValue(segop->getResolve(),point);
       fullEncoding = (base << 8 * innersz) + (val & calc_mask(innersz));
       vector<uintb> seginput;
-      seginput.push_back(val);
       seginput.push_back(base);
+      seginput.push_back(val);
       val = segop->execute(seginput);
       return Address(spc,AddrSpace::addressToByte(val,spc->getWordSize()));
     }
@@ -1355,8 +1400,8 @@ Address SegmentedResolver::resolve(uintb val,int4 sz,const Address &point,uintb 
     uintb base = (val >> 8*innersz) & calc_mask(outersz);
     val = val & calc_mask(innersz);
     vector<uintb> seginput;
-    seginput.push_back(val);
     seginput.push_back(base);
+    seginput.push_back(val);
     val = segop->execute(seginput);
     return Address(spc,AddrSpace::addressToByte(val,spc->getWordSize()));
   }

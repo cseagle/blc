@@ -144,11 +144,7 @@ typedef rangemap<SymbolEntry> EntryMap;			///< A rangemap of SymbolEntry
 /// At its most basic, a Symbol is a \b name and a \b data-type.
 /// Practically a Symbol knows what Scope its in, how it should be
 /// displayed, and the symbols \e category. A category is a subset
-/// of symbols that are stored together for quick access.  The
-/// \b category field can be:
-///    -  -1   for no category
-///    -   0   indicates a function parameter
-///    -   1   indicates an equate symbol
+/// of symbols that are stored together for quick access.
 class Symbol {
   friend class Scope;
   friend class ScopeInternal;
@@ -162,7 +158,7 @@ protected:
 				// only typelock,namelock,readonly,externref
 				// addrtied, persist inherited from scope
   uint4 dispflags;		///< Flags affecting the display of this symbol
-  int2 category;		///< Special category (-1==none 0=parameter 1=equate)
+  int2 category;		///< Special category (\b function_parameter, \b equate, etc.)
   uint2 catindex;		///< Index within category
   uint8 symbolId;		///< Unique id, 0=unassigned
   vector<list<SymbolEntry>::iterator> mapentry;	///< List of storage locations labeled with \b this Symbol
@@ -185,6 +181,14 @@ public:
     isolate = 16,		///< Symbol should not speculatively merge automatically
     merge_problems = 32,	///< Set if some SymbolEntrys did not get merged
     is_this_ptr = 64		///< We are the "this" symbol for a class method
+  };
+
+  /// \brief The possible specialize Symbol \e categories
+  enum {
+    no_category = -1,		///< Symbol is not in a special category
+    function_parameter = 0,	///< The Symbol is a parameter to a function
+    equate = 1,			///< The Symbol holds \e equate information about a constant
+    union_facet = 2		///< Symbol holding read or write facing union field information
   };
 
   Symbol(Scope *sc,const string &nm,Datatype *ct);	///< Construct given a name and data-type
@@ -270,9 +274,20 @@ public:
 class EquateSymbol : public Symbol {
   uintb value;				///< Value of the constant being equated
 public:
-  EquateSymbol(Scope *sc) : Symbol(sc) { value = 0; category = 1; }	///< Constructor for use with restoreXml
+  EquateSymbol(Scope *sc,const string &nm,uint4 format,uintb val);	///< Constructor
+  EquateSymbol(Scope *sc) : Symbol(sc) { value = 0; category = equate; }	///< Constructor for use with restoreXml
   uintb getValue(void) const { return value; }				///< Get the constant value
   bool isValueClose(uintb op2Value,int4 size) const;			///< Is the given value similar to \b this equate
+  virtual void saveXml(ostream &s) const;
+  virtual void restoreXml(const Element *el);
+};
+
+class UnionFacetSymbol : public Symbol {
+  int4 fieldNum;			///< Particular field to associate with Symbol access
+public:
+  UnionFacetSymbol(Scope *sc,const string &nm,Datatype *unionDt,int4 fldNum);	///< Constructor from components
+  UnionFacetSymbol(Scope *sc) : Symbol(sc) { fieldNum = -1; category = union_facet; }	///< Constructor for restoreXml
+  int4 getFieldNumber(void) const { return fieldNum; }		///< Get the particular field associate with \b this
   virtual void saveXml(ostream &s) const;
   virtual void restoreXml(const Element *el);
 };
@@ -604,9 +619,9 @@ public:
   /// \brief Find a Symbol by name within \b this Scope
   ///
   /// If there are multiple Symbols with the same name, all are passed back.
-  /// \param name is the name to search for
+  /// \param nm is the name to search for
   /// \param res will contain any matching Symbols
-  virtual void findByName(const string &name,vector<Symbol *> &res) const=0;
+  virtual void findByName(const string &nm,vector<Symbol *> &res) const=0;
 
   /// \brief Check if the given name is occurs within the given scope path.
   ///
@@ -670,7 +685,7 @@ public:
   /// \param ind is the index position to set (within the category)
   virtual void setCategory(Symbol *sym,int4 cat,int4 ind)=0;
 
-  virtual SymbolEntry *addSymbol(const string &name,Datatype *ct,
+  virtual SymbolEntry *addSymbol(const string &nm,Datatype *ct,
 				 const Address &addr,const Address &usepoint);
 
   const string &getName(void) const { return name; }		///< Get the name of the Scope
@@ -678,8 +693,8 @@ public:
   bool isGlobal(void) const { return (fd == (Funcdata *)0); }	///< Return \b true if \b this scope is global
 
   // The main global querying routines
-  void queryByName(const string &name,vector<Symbol *> &res) const;	///< Look-up symbols by name
-  Funcdata *queryFunction(const string &name) const;			///< Look-up a function by name
+  void queryByName(const string &nm,vector<Symbol *> &res) const;	///< Look-up symbols by name
+  Funcdata *queryFunction(const string &nm) const;			///< Look-up a function by name
   SymbolEntry *queryByAddr(const Address &addr,
 			   const Address &usepoint) const;	  	///< Get Symbol with matching address
   SymbolEntry *queryContainer(const Address &addr,int4 size,
@@ -690,7 +705,7 @@ public:
   Funcdata *queryExternalRefFunction(const Address &addr) const;	///< Look-up a function thru an \e external \e reference
   LabSymbol *queryCodeLabel(const Address &addr) const;			///< Look-up a code label by address
 
-  Scope *resolveScope(const string &name, bool strategy) const;		///< Find a child Scope of \b this
+  Scope *resolveScope(const string &nm, bool strategy) const;		///< Find a child Scope of \b this
   Scope *discoverScope(const Address &addr,int4 sz,const Address &usepoint);	///< Find the owning Scope of a given memory range
   ScopeMap::const_iterator childrenBegin() const { return children.begin(); }	///< Beginning iterator of child scopes
   ScopeMap::const_iterator childrenEnd() const { return children.end(); }	///< Ending iterator of child scopes
@@ -704,7 +719,7 @@ public:
   const Scope *findDistinguishingScope(const Scope *op2) const;	///< Find first ancestor of \b this not shared by given scope
   Architecture *getArch(void) const { return glb; }		///< Get the Architecture associated with \b this
   Scope *getParent(void) const { return parent; }		///< Get the parent Scope (or NULL if \b this is the global Scope)
-  Symbol *addSymbol(const string &name,Datatype *ct);		///< Add a new Symbol \e without mapping it to an address
+  Symbol *addSymbol(const string &nm,Datatype *ct);		///< Add a new Symbol \e without mapping it to an address
   SymbolEntry *addMapPoint(Symbol *sym,const Address &addr,
 			   const Address &usepoint);		///< Map a Symbol to a specific address
   Symbol *addMapSym(const Element *el);				///< Add a mapped Symbol from a \<mapsym> XML tag
@@ -712,6 +727,7 @@ public:
   ExternRefSymbol *addExternalRef(const Address &addr,const Address &refaddr,const string &nm);
   LabSymbol *addCodeLabel(const Address &addr,const string &nm);
   Symbol *addDynamicSymbol(const string &nm,Datatype *ct,const Address &caddr,uint8 hash);
+  Symbol *addEquateSymbol(const string &nm,uint4 format,uintb value,const Address &addr,uint8 hash);
   string buildDefaultName(Symbol *sym,int4 &base,Varnode *vn) const;	///< Create a default name for the given Symbol
   bool isReadOnly(const Address &addr,int4 size,const Address &usepoint) const;
   void printBounds(ostream &s) const { rangetree.printBounds(s); }	///< Print a description of \b this Scope's \e owned memory ranges
@@ -727,7 +743,7 @@ class ScopeInternal : public Scope {
   void processHole(const Element *el);
   void processCollision(const Element *el);
   void insertNameTree(Symbol *sym);
-  SymbolNameTree::const_iterator findFirstByName(const string &name) const;
+  SymbolNameTree::const_iterator findFirstByName(const string &nm) const;
 protected:
   virtual Scope *buildSubScope(uint8 id,const string &nm);	///< Build an unattached Scope to be associated as a sub-scope of \b this
   virtual void addSymbolInternal(Symbol *sym);
@@ -774,7 +790,7 @@ public:
   virtual LabSymbol *findCodeLabel(const Address &addr) const;
   virtual SymbolEntry *findOverlap(const Address &addr,int4 size) const;
 
-  virtual void findByName(const string &name,vector<Symbol *> &res) const;
+  virtual void findByName(const string &nm,vector<Symbol *> &res) const;
   virtual bool isNameUsed(const string &nm,const Scope *op2) const;
   virtual Funcdata *resolveExternalRefFunction(ExternRefSymbol *sym) const;
 
@@ -892,7 +908,7 @@ inline Symbol::Symbol(Scope *sc,const string &nm,Datatype *ct)
   type=ct;
   flags=0;
   dispflags=0;
-  category=-1;
+  category=no_category;
   catindex = 0;
   symbolId=0;
   wholeCount=0;
@@ -909,7 +925,7 @@ inline Symbol::Symbol(Scope *sc)
   type = (Datatype *)0;
   flags=0;
   dispflags=0;
-  category=-1;
+  category=no_category;
   catindex = 0;
   symbolId = 0;
   wholeCount=0;
