@@ -69,24 +69,24 @@ OBJDIR32=obj32
 OBJDIR64=obj64
 
 SRCS=action.cc address.cc architecture.cc ast.cc \
-	block.cc blockaction.cc capability.cc cast.cc \
-	comment.cc  condexe.cc context.cc coreaction.cc \
-	cover.cc cpool.cc crc32.cc database.cc double.cc \
-	dynamic.cc emulate.cc emulateutil.cc filemanage.cc \
-	float.cc flow.cc fspec.cc funcdata.cc funcdata_block.cc \
-	funcdata_op.cc funcdata_varnode.cc globalcontext.cc \
-	graph.cc heritage.cc ida_arch.cc ida_load_image.cc \
-	ida_scope.cc inject_sleigh.cc jumptable.cc libdecomp.cc \
-	loadimage.cc memstate.cc merge.cc op.cc opbehavior.cc \
-	opcodes.cc options.cc override.cc paramid.cc \
-	pcodecompile.cc pcodeinject.cc pcodeparse.tab.cc \
-	pcoderaw.cc plugin.cc prefersplit.cc prettyprint.cc \
-	printc.cc printjava.cc printlanguage.cc rangeutil.cc \
-	ruleaction.cc run.cc semantics.cc sleigh.cc \
-	sleigh_arch.cc sleighbase.cc slghpatexpress.cc \
-	slghpattern.cc slghsymbol.cc space.cc stringmanage.cc subflow.cc \
-	transform.cc translate.cc type.cc typeop.cc userop.cc \
-	variable.cc varmap.cc varnode.cc xml.tab.cc
+    block.cc blockaction.cc callgraph.cc capability.cc \
+    cast.cc comment.cc condexe.cc context.cc coreaction.cc \
+    cover.cc cpool.cc crc32.cc database.cc double.cc dynamic.cc \
+    emulate.cc emulateutil.cc filemanage.cc float.cc flow.cc \
+    fspec.cc funcdata.cc funcdata_block.cc funcdata_op.cc \
+    funcdata_varnode.cc globalcontext.cc grammar.tab.cc graph.cc \
+    heritage.cc ida_arch.cc ida_load_image.cc ida_scope.cc \
+    ifacedecomp.cc inject_sleigh.cc interface.cc jumptable.cc \
+    libdecomp.cc loadimage.cc memstate.cc merge.cc op.cc \
+    opbehavior.cc opcodes.cc options.cc override.cc paramid.cc \
+    pcodecompile.cc pcodeinject.cc pcodeparse.tab.cc pcoderaw.cc \
+    plugin.cc prefersplit.cc prettyprint.cc printc.cc printjava.cc \
+    printlanguage.cc rangeutil.cc ruleaction.cc run.cc semantics.cc \
+    sleigh.cc sleigh_arch.cc sleighbase.cc slghpatexpress.cc \
+    slghpattern.cc slghsymbol.cc space.cc stringmanage.cc \
+    subflow.cc testfunction.cc transform.cc translate.cc type.cc \
+    typeop.cc unionresolve.cc userop.cc variable.cc varmap.cc \
+    varnode.cc xml.tab.cc 
 
 OBJS32 := $(patsubst %.cc, $(OBJDIR32)/%.o, $(SRCS) )
 OBJS64 := $(patsubst %.cc, $(OBJDIR64)/%.o, $(SRCS) )
