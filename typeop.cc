@@ -361,7 +361,7 @@ Datatype *TypeOpLoad::getInputCast(const PcodeOp *op,int4 slot,const CastStrateg
   Datatype *reqtype = op->getOut()->getHighTypeDefFacing();	// Cast load pointer to match output
   const Varnode *invn = op->getIn(1);
   Datatype *curtype = invn->getHighTypeReadFacing(op);
-  AddrSpace *spc = Address::getSpaceFromConst(op->getIn(0)->getAddr());
+  AddrSpace *spc = op->getIn(0)->getSpaceFromConst();
   // Its possible that the input type is not a pointer to the output type
   // (or even a pointer) due to cycle trimming in the type propagation algorithms
   if (curtype->getMetatype() == TYPE_PTR)
@@ -408,7 +408,7 @@ Datatype *TypeOpLoad::propagateType(Datatype *alttype,PcodeOp *op,Varnode *invn,
   if (invn->isSpacebase()) return (Datatype *)0;
   Datatype *newtype;
   if (inslot == -1) {	 // Propagating output to input (value to ptr)
-    AddrSpace *spc = Address::getSpaceFromConst(op->getIn(0)->getAddr());
+    AddrSpace *spc = op->getIn(0)->getSpaceFromConst();
     newtype = tlst->getTypePointerNoDepth(outvn->getTempType()->getSize(),alttype,spc->getWordSize());
   }
   else if (alttype->getMetatype()==TYPE_PTR) {
@@ -426,7 +426,7 @@ void TypeOpLoad::printRaw(ostream &s,const PcodeOp *op)
 {
   Varnode::printRaw(s,op->getOut());
   s << " = *(";
-  AddrSpace *spc = Address::getSpaceFromConst(op->getIn(0)->getAddr());
+  AddrSpace *spc = op->getIn(0)->getSpaceFromConst();
   s << spc->getName() << ',';
   Varnode::printRaw(s,op->getIn(1));
   s << ')';
@@ -447,7 +447,7 @@ Datatype *TypeOpStore::getInputCast(const PcodeOp *op,int4 slot,const CastStrate
   Datatype *pointerType = pointerVn->getHighTypeReadFacing(op);
   Datatype *pointedToType = pointerType;
   Datatype *valueType = op->getIn(2)->getHighTypeReadFacing(op);
-  AddrSpace *spc = Address::getSpaceFromConst(op->getIn(0)->getAddr());
+  AddrSpace *spc = op->getIn(0)->getSpaceFromConst();
   int4 destSize;
   if (pointerType->getMetatype() == TYPE_PTR) {
     pointedToType = ((TypePointer *)pointerType)->getPtrTo();
@@ -483,7 +483,7 @@ Datatype *TypeOpStore::propagateType(Datatype *alttype,PcodeOp *op,Varnode *invn
   if (invn->isSpacebase()) return (Datatype *)0;
   Datatype *newtype;
   if (inslot==2) {		// Propagating value to ptr
-    AddrSpace *spc = Address::getSpaceFromConst(op->getIn(0)->getAddr());
+    AddrSpace *spc = op->getIn(0)->getSpaceFromConst();
     newtype = tlst->getTypePointerNoDepth(outvn->getTempType()->getSize(),alttype,spc->getWordSize());
   }
   else if (alttype->getMetatype()==TYPE_PTR) {
@@ -500,7 +500,7 @@ void TypeOpStore::printRaw(ostream &s,const PcodeOp *op)
 
 {
   s << "*(";
-  AddrSpace *spc = Address::getSpaceFromConst(op->getIn(0)->getAddr());
+  AddrSpace *spc = op->getIn(0)->getSpaceFromConst();
   s << spc->getName() << ',';
   Varnode::printRaw(s,op->getIn(1));
   s << ") = ";
@@ -1791,7 +1791,18 @@ TypeOpMulti::TypeOpMulti(TypeFactory *t) : TypeOp(t,CPUI_MULTIEQUAL,"?")
 Datatype *TypeOpMulti::propagateType(Datatype *alttype,PcodeOp *op,Varnode *invn,Varnode *outvn,
 				     int4 inslot,int4 outslot)
 {
-  if ((inslot!=-1)&&(outslot!=-1)) return (Datatype *)0; // Must propagate input <-> output
+  if ((inslot!=-1)&&(outslot!=-1)) {
+    if (invn == outvn && outvn->getTempType()->needsResolution()) {
+      // If same Varnode occupies two input slots of the MULTIEQUAL
+      // the second input slot should inherit the resolution of the first
+      Funcdata *fd = op->getParent()->getFuncdata();
+      Datatype *unionType = outvn->getTempType();
+      const ResolvedUnion *res = fd->getUnionField(unionType, op, inslot);
+      if (res != (const ResolvedUnion *)0)
+	fd->setUnionField(unionType, op, outslot, *res);
+    }
+    return (Datatype *)0; // Must propagate input <-> output
+  }
   Datatype *newtype;
   if (invn->isSpacebase()) {
     AddrSpace *spc = tlst->getArch()->getDefaultDataSpace();
@@ -1939,15 +1950,16 @@ Datatype *TypeOpSubpiece::propagateType(Datatype *alttype,PcodeOp *op,Varnode *i
   int4 byteOff;
   int4 newoff;
   const TypeField *field;
-  if (alttype->getMetatype() == TYPE_UNION) {
+  type_metatype meta = alttype->getMetatype();
+  if (meta == TYPE_UNION || meta == TYPE_PARTIALUNION) {
     // NOTE: We use an artificial slot here to store the field being truncated to
     // as the facing data-type for slot 0 is already to the parent (this TYPE_UNION)
     byteOff = computeByteOffsetForComposite(op);
-    field = ((TypeUnion *)alttype)->resolveTruncation(byteOff,op,1,newoff);
+    field = alttype->resolveTruncation(byteOff,op,1,newoff);
   }
   else if (alttype->getMetatype() == TYPE_STRUCT) {
     int4 byteOff = computeByteOffsetForComposite(op);
-    field = ((TypeStruct *)alttype)->resolveTruncation(byteOff, outvn->getSize(), &newoff);
+    field = alttype->findTruncation(byteOff, outvn->getSize(), op, 1, newoff);
   }
   else
     return (Datatype *)0;
@@ -1972,22 +1984,13 @@ const TypeField *TypeOpSubpiece::testExtraction(bool useHigh,const PcodeOp *op,D
 
 {
   const Varnode *vn = op->getIn(0);
-  Datatype *ct = useHigh ? vn->getHigh()->getType() : vn->getType();
-  if (ct->getMetatype() == TYPE_STRUCT) {
-    parent = ct;
-    int4 byteOff = computeByteOffsetForComposite(op);
-    return ((TypeStruct *)ct)->resolveTruncation(byteOff,op->getOut()->getSize(),&offset);
-  }
-  else if (ct->getMetatype() == TYPE_UNION) {
-    const Funcdata *fd = op->getParent()->getFuncdata();
-    const ResolvedUnion *res = fd->getUnionField(ct, op, 1);		// Use artificial slot
-    if (res != (const ResolvedUnion *)0 && res->getFieldNum() >= 0) {
-      parent = ct;
-      offset = 0;
-      return ((TypeUnion *)ct)->getField(res->getFieldNum());
-    }
-  }
-  return (const TypeField *)0;
+  Datatype *ct = useHigh ? vn->getHighTypeReadFacing(op) : vn->getTypeReadFacing(op);
+  type_metatype meta = ct->getMetatype();
+  if (meta != TYPE_STRUCT && meta != TYPE_UNION && meta != TYPE_PARTIALUNION)
+    return (const TypeField *)0;
+  parent = ct;
+  int4 byteOff = computeByteOffsetForComposite(op);
+  return ct->findTruncation(byteOff,op->getOut()->getSize(),op,1,offset);	// Use artificial slot
 }
 
 /// \brief Compute the byte offset into an assumed composite data-type produced by the given CPUI_SUBPIECE
@@ -2183,7 +2186,7 @@ void TypeOpSegment::printRaw(ostream &s,const PcodeOp *op)
   }
   s << getOperatorName(op);
   s << '(';
-  AddrSpace *spc = Address::getSpaceFromConst(op->getIn(0)->getAddr());
+  AddrSpace *spc = op->getIn(0)->getSpaceFromConst();
   s << spc->getName() << ',';
   Varnode::printRaw(s,op->getIn(1));
   s << ',';

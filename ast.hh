@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+class Element;
+
 using std::string;
 using std::vector;
 
@@ -64,7 +66,7 @@ struct AstItem {
 
    void print_in();
    void print_out();
-   
+
    void do_print();
 
    virtual void print() = 0;
@@ -83,7 +85,7 @@ struct Type : public AstItem {
    uint32_t ptr;
    bool is_const;
    bool is_cast;
-   
+
    Type(const string &_name) : name(_name), ptr(0), is_const(false), is_cast(false) {};
    virtual void print();
    virtual void print(const string &var);
@@ -135,7 +137,7 @@ struct UnaryExpr : public Expression {
 
    UnaryExpr(const string &unop, Expression *ex) : op(unop), expr(ex) {};
    ~UnaryExpr() {delete expr;};
-   
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -158,7 +160,7 @@ struct ArrayExpr : public Expression {
 
    ArrayExpr(Expression *_array, Expression *_index) : array(_array), index(_index) {};
    ~ArrayExpr() {delete array; delete index;};
-   
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -193,9 +195,9 @@ struct LabelStatement : public Statement {
 
 struct GotoStatement : public Statement {
    Expression *label;
-   
+
    ~GotoStatement() {delete label;};
-   
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -248,7 +250,7 @@ struct CastExpr : public Expression {
 
    CastExpr(const string &typ);
    ~CastExpr();
-   
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -302,7 +304,7 @@ struct IntegerLiteral : public LiteralExpr {
    IntegerLiteral(const string &num) : LiteralExpr(num) {};
 
    virtual void print();
-   
+
    uint64_t get_value();
 };
 
@@ -392,7 +394,7 @@ struct Switch : public Statement {
 
    Switch() : cond(NULL) {no_semi = true;};
    ~Switch() {delete cond;};
-   
+
    virtual void print();
 
    virtual void rename(const string &oldname, const string &newname);
@@ -460,8 +462,8 @@ struct Function : public Statement {
    virtual void rename(const string &oldname, const string &newname);
 };
 
-class Element;
-Function *func_from_xml(Element *el, uint64_t addr);
+struct XmlElement;
+Function *func_from_tree(XmlElement *root, uint64_t addr);
 
 bool is_reserved(const string &word);
 

@@ -16,6 +16,12 @@
 #include "varnode.hh"
 #include "funcdata.hh"
 
+AttributeId ATTRIB_ADDRTIED = AttributeId("addrtied",30);
+AttributeId ATTRIB_GRP = AttributeId("grp",31);
+AttributeId ATTRIB_INPUT = AttributeId("input",32);
+AttributeId ATTRIB_PERSISTS = AttributeId("persists",33);
+AttributeId ATTRIB_UNAFF = AttributeId("unaff",34);
+
 /// Compare by location then by definition.
 /// This is the same as the normal varnode compare, but we distinguish identical frees by their
 /// pointer address.  Thus varsets defined with this comparison act like multisets for free varnodes
@@ -813,6 +819,24 @@ Datatype *Varnode::getLocalType(bool &blockup) const
   return ct;
 }
 
+/// If \b this varnode is produced by an operation with a boolean output, or if it is
+/// formally marked with a boolean data-type, return \b true. The parameter \b trustAnnotation
+/// toggles whether or not the formal data-type is trusted.
+/// \return \b true if \b this is a formal boolean, \b false otherwise
+bool Varnode::isBooleanValue(bool useAnnotation) const
+
+{
+  if (isWritten()) return def->isCalculatedBool();
+  if (!useAnnotation)
+    return false;
+  if ((flags & (input | typelock)) == (input | typelock)) {
+    if (size == 1 && type->getMetatype() == TYPE_BOOL)
+      return true;
+  }
+  return false;
+}
+
+
 /// Make a local determination if \b this and \b op2 hold the same value. We check if
 /// there is a common ancester for which both \b this and \b op2 are created from a direct
 /// sequence of COPY operations. NOTE: This is a transitive relationship
@@ -863,30 +887,32 @@ int4 Varnode::termOrder(const Varnode *op) const
   return 0;
 }
 
-/// Write an XML tag, \b \<addr>, with at least the following attributes:
+/// Encode \b this as an \<addr> element, with at least the following attributes:
 ///   - \b space describes the AddrSpace
 ///   - \b offset of the Varnode within the space
 ///   - \b size of the Varnode is bytes
 ///
-/// Additionally the tag will contain other optional attributes.
-/// \param s is the stream to write the tag to
-void Varnode::saveXml(ostream &s) const
+/// Additionally the element will contain other optional attributes.
+/// \param encoder is the stream encoder
+void Varnode::encode(Encoder &encoder) const
 
 {
-  s << "<addr";
-  loc.getSpace()->saveXmlAttributes(s,loc.getOffset(),size);
-  a_v_u(s,"ref",getCreateIndex());
+  encoder.openElement(ELEM_ADDR);
+  loc.getSpace()->encodeAttributes(encoder,loc.getOffset(),size);
+  encoder.writeUnsignedInteger(ATTRIB_REF, getCreateIndex());
   if (mergegroup != 0)
-    a_v_i(s,"grp",getMergeGroup());
+    encoder.writeSignedInteger(ATTRIB_GRP, getMergeGroup());
   if (isPersist())
-    s << " persists=\"true\"";
+    encoder.writeBool(ATTRIB_PERSISTS, true);
   if (isAddrTied())
-    s << " addrtied=\"true\"";
+    encoder.writeBool(ATTRIB_ADDRTIED, true);
   if (isUnaffected())
-    s << " unaff=\"true\"";
+    encoder.writeBool(ATTRIB_UNAFF, true);
   if (isInput())
-    s << " input=\"true\"";
-  s << "/>";
+    encoder.writeBool(ATTRIB_INPUT, true);
+  if (isVolatile())
+    encoder.writeBool(ATTRIB_VOLATILE, true);
+  encoder.closeElement(ELEM_ADDR);
 }
 
 /// Invoke the printRaw method on the given Varnode pointer, but take into account that it

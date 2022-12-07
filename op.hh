@@ -20,6 +20,9 @@
 
 #include "typeop.hh"
 
+extern ElementId ELEM_IOP;		///< Marshaling element \<iop>
+extern ElementId ELEM_UNIMPL;		///< Marshaling element \<unimpl>
+
 /// \brief Space for storing internal PcodeOp pointers as addresses
 ///
 /// It is convenient and efficient to replace the formally encoded
@@ -32,11 +35,11 @@
 class IopSpace : public AddrSpace {
 public:
   IopSpace(AddrSpaceManager *m,const Translate *t,int4 ind);
-  virtual void saveXmlAttributes(ostream &s,uintb offset) const { s << " space=\"iop\""; }
-  virtual void saveXmlAttributes(ostream &s,uintb offset,int4 size) const { s << " space=\"iop\""; }
+  virtual void encodeAttributes(Encoder &encoder,uintb offset) const { encoder.writeString(ATTRIB_SPACE, "iop"); }
+  virtual void encodeAttributes(Encoder &encoder,uintb offset,int4 size) const { encoder.writeString(ATTRIB_SPACE, "iop"); }
   virtual void printRaw(ostream &s,uintb offset) const;
   virtual void saveXml(ostream &s) const;
-  virtual void restoreXml(const Element *el);
+  virtual void decode(Decoder &decoder);
   static const string NAME;			///< Reserved name for the iop space
 };
 
@@ -107,7 +110,8 @@ public:
     warning = 8,		///< Warning has been generated for this op
     incidental_copy = 0x10,	///< Treat this as \e incidental for parameter recovery algorithms
     is_cpool_transformed = 0x20, ///< Have we checked for cpool transforms
-    stop_type_propagation = 0x40	///< Stop data-type propagation into output from descendants
+    stop_type_propagation = 0x40,	///< Stop data-type propagation into output from descendants
+    hold_output = 0x80		///< Output varnode (of call) should not be removed if it is unread
   };
 private:
   TypeOp *opcode;		///< Pointer to class providing behavioral details of the operation
@@ -206,6 +210,8 @@ public:
   bool stopsTypePropagation(void) const { return ((addlflags&stop_type_propagation)!=0); }	///< Is data-type propagation from below stopped
   void setStopTypePropagation(void) { addlflags |= stop_type_propagation; }	///< Stop data-type propagation from below
   void clearStopTypePropagation(void) { addlflags &= ~stop_type_propagation; }	///< Allow data-type propagation from below
+  bool holdOutput(void) const { return ((addlflags&hold_output)!=0); }	///< If \b true, do not remove output as dead code
+  void setHoldOutput(void) { addlflags |= hold_output; }	///< Prevent output from being removed as dead code
   bool stopsCopyPropagation(void) const { return ((flags&no_copy_propagation)!=0); }	///< Does \b this allow COPY propagation
   void setStopCopyPropagation(void) { flags |= no_copy_propagation; }	///< Stop COPY propagation through inputs
   /// \brief Return \b true if this LOADs or STOREs from a dynamic \e spacebase pointer
@@ -226,7 +232,8 @@ public:
   void printRaw(ostream &s) const { opcode->printRaw(s,this); }	///< Print raw info about this op to stream
   const string &getOpName(void) const { return opcode->getName(); } ///< Return the name of this op
   void printDebug(ostream &s) const; ///< Print debug description of this op to stream
-  void saveXml(ostream &s) const; ///< Write an XML description of this op to stream
+  void encode(Encoder &encoder) const; ///< Encode a description of \b this op to stream
+
   /// \brief Retrieve the PcodeOp encoded as the address \e addr
   static PcodeOp *getOpFromConst(const Address &addr) { return (PcodeOp *)(uintp)addr.getOffset(); }
 

@@ -267,6 +267,12 @@
     <ClCompile Include="callgraph.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="marshal.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="xml_tree.cc">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="action.hh">
@@ -512,6 +518,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="transform.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="marshal.hh">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="xml_tree.hh">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
