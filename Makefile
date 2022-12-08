@@ -1,9 +1,13 @@
 #Set this variable to point to your SDK directory
 IDA_SDK=../../
 
-SDKVER=$(shell pwd | grep -o -E "idasdk[0-9]{2,3}" | cut -c 7-)
-IDAVER=$(shell pwd | grep -o -E "idasdk[0-9]{2,3}" | cut -c 7- | sed 's/\(.\)\(.\)/\1\.\2/')
-IDAVER_MAJOR=$(shell pwd | grep -o -E "idasdk[0-9]{2,3}" | cut -c 7)
+SDKVER=$(shell pwd | grep -o -E "idasdk[_a-z]*[0-9]{2,3}" | grep -o -E "[0-9]+")
+IDAVER=$(shell pwd | grep -o -E "idasdk[_a-z]*[0-9]{2,3}" | grep -o -E "[0-9]+" | sed 's/\(.\)\(.\)/\1\.\2/')
+IDAVER_MAJOR=$(shell pwd | grep -o -E "idasdk[_a-z]*[0-9]{2,3}" | grep -o -E "[0-9]+" | cut -c 1)
+
+$(info $$SDKVER is [${SDKVER}])
+$(info $$IDAVER is [${IDAVER}])
+$(info $$IDAVER_MAJOR is [${IDAVER_MAJOR}])
 
 PLATFORM=$(shell uname | cut -f 1 -d _)
 
@@ -86,7 +90,7 @@ SRCS=action.cc address.cc architecture.cc ast.cc \
     slghpattern.cc slghsymbol.cc space.cc stringmanage.cc \
     subflow.cc testfunction.cc transform.cc translate.cc type.cc \
     typeop.cc unionresolve.cc userop.cc variable.cc varmap.cc \
-    varnode.cc xml.tab.cc 
+    varnode.cc xml.tab.cc xml_tree.cc
 
 OBJS32 := $(patsubst %.cc, $(OBJDIR32)/%.o, $(SRCS) )
 OBJS64 := $(patsubst %.cc, $(OBJDIR64)/%.o, $(SRCS) )
