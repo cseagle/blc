@@ -753,15 +753,22 @@ void map_var_from_decl(Decompiled *dec, VarDecl *decl) {
     struc_t *frame = get_frame(func);
     ea_t ra = frame_off_retaddr(func);
     const string gname = decl->getName();
+//    msg("Ghidra name is: %s\n", gname.c_str());
     size_t stack = gname.find("Stack");
     LocalVar *lv = new LocalVar(gname, gname);  //default current name will be ghidra name
     if (stack != string::npos) {         //if it's a stack var, change current to ida name
-        uint32_t stackoff = strtoul(&gname[stack + 5], NULL, 0);
+        stack += 5;
+        if (gname[stack] == '_') {
+            stack++;                // should probably bump this until we find a hex digit
+        }
+        uint32_t stackoff = strtoul(&gname[stack], NULL, 16);   //always translate as hex, names do not contain 0x
+//        msg("Stack offset computed to be: 0x%x\n", stackoff);
         member_t *var = get_member(frame, ra - stackoff);
         lv->offset = ra - stackoff;
         if (var) {                        //now we know there's an ida name assigned
             qstring iname;
             get_member_name(&iname, var->id);
+//            msg("member was found named: %s\n", iname.c_str());
             ast->rename(gname, iname.c_str());
             dec->locals[iname.c_str()] = lv;
             lv->current_name = iname.c_str();
@@ -771,6 +778,7 @@ void map_var_from_decl(Decompiled *dec, VarDecl *decl) {
             //       the new data member
             qstring iname;
             iname.sprnt("var_%X", stackoff - func->frregs);
+//            msg("member was not found renaming to: %s\n", iname.c_str());
             if (add_struc_member(frame, iname.c_str(), ra - stackoff, byte_flag(), NULL, 1) == 0) {
                 ast->rename(gname, iname.c_str());
                 dec->locals[iname.c_str()] = lv;

@@ -20,7 +20,7 @@
 #include "xml_tree.hh"
 #include "ida_minimal.hh"
 
-//#define DEBUG_XML_TREE 1
+#define DEBUG_XML_TREE 1
 
 #ifdef DEBUG_XML_TREE
 #define dmsg(x, ...) msg(x, __VA_ARGS__)
