@@ -48,8 +48,10 @@
 #include <xref.hpp>
 #include <help.h>
 #include <moves.hpp>
+#include <lines.hpp>
 
 #include <stdlib.h>
+#include <ctype.h>
 #include <iostream>
 #include <fstream>
 #include <map>
@@ -200,13 +202,145 @@ static bool navigate_to_word(TWidget *w, bool cursor) {
     return false;
 }
 
+void split(const char *str, vector<string> &parts, char ch = '\n') {
+    const char *ptr;
+    size_t begin = 0;
+    while (true) {
+        ptr = strchr(str, ch);
+        if (ptr == NULL) {
+            break;
+        }
+        parts.push_back(string(str, ptr));
+        str = ptr + 1;
+    }
+    if (*str) {
+        parts.push_back(str);
+    }
+}
+
+strvec_t *generate_code(Decompiled *dec) {
+    vector<string> code;
+    dec->ast->print(&code);
+    strvec_t *sv = new strvec_t();
+    netnode nn(dec->ida_func->start_ea);  // for access to stored comments
+    ea_t lineno = 0;
+    for (vector<string>::iterator si = code.begin(); si != code.end(); si++) {
+        qstring comment;
+        ssize_t sz = nn.supstr(&comment, lineno, '#');
+        if (sz > 0) {
+            // create new string by appending comment w/ comment color to code string
+            qstring line = si->c_str();
+
+            ssize_t len = tag_strlen(line.c_str());
+            vector<string> parts;
+            split(comment.c_str(), parts);
+
+            line.cat_sprnt("  %c%c// %s%c%c", COLOR_ON, COLOR_CREF, parts[0].c_str(), COLOR_OFF, COLOR_CREF);
+            sv->push_back(simpleline_t(line.c_str()));
+            for (int i = 1; i < parts.size(); i++) {
+                qstring cmt;
+                cmt.sprnt("%*s  %c%c// %s%c%c", len, "", COLOR_ON, COLOR_CREF, parts[i].c_str(), COLOR_OFF, COLOR_CREF);
+                sv->push_back(simpleline_t(cmt.c_str()));
+                lineno++;
+            }
+        }
+        else {
+             sv->push_back(simpleline_t(si->c_str()));
+        }
+        lineno++;
+    }
+    dec->set_ud(sv);
+    return sv;
+}
+
+void refresh_view(TWidget *w, Decompiled *dec) {
+    strvec_t *sv = generate_code(dec);
+    callui(ui_custom_viewer_set_userdata, w, sv);
+    refresh_custom_viewer(w);
+    repaint_custom_viewer(w);
+}
+
+int find_cmt_start(Decompiled *dec, int y) {
+    while (y >= 0) {
+        qstring clean;
+        tag_remove(&clean, (*dec->sv)[y].line);
+        const char *ptr = clean.c_str();
+        while (*ptr) {
+            if (isspace(*ptr)) {
+                ptr++;
+            }
+            else if (strncmp(ptr, "//", 2) == 0) {
+                break;
+            }
+            else {
+                return y;
+            }
+        }
+        y--;
+    }
+    return -1;
+}
+
+bool add_new_comment(TWidget *w) {
+    //Add eol comment on current line
+    int x, y;
+    // get_custom_viewer_place returns a position in the visible portion of the listing, NOT an absolute
+    // position within the entire body of text that populates the listing
+    place_t *pl = get_custom_viewer_place(w, false, &x, &y);
+    tcc_place_type_t pt = get_viewer_place_type(w);
+    if (pl && pt == TCCPT_SIMPLELINE_PLACE) {
+        simpleline_place_t *slp = (simpleline_place_t*)pl;
+        y = slp->n;
+    }
+    else {
+        //msg("Couldn't retrieve line number\n");
+        return false;
+    }
+    Decompiled *dec = function_map[w];  //the ast for the function we are editing
+    netnode nn(dec->ida_func->start_ea);  // for access to stored comments
+    y = find_cmt_start(dec, y);
+    if (y < 0) {
+        msg("Failed to find comment start line\n");
+        return false;
+    }
+    qstring comment;
+    ssize_t sz = nn.supstr(&comment, y, '#');
+    vector<string> parts;
+    split(comment.c_str(), parts);
+    size_t old_parts = parts.size();
+    if (old_parts == 0) {
+        old_parts = 1;
+    }
+    parts.clear();
+    if (ask_text(&comment, 1024, comment.c_str(), "Please enter comment")) {
+        split(comment.c_str(), parts);
+        size_t new_parts = parts.size();
+        if (new_parts == 0) {
+            new_parts = 1;
+        }
+        if (new_parts != old_parts) {
+            //need to adjust the nodeidx of all comments at lines higher than this one
+            ssize_t delta = new_parts - old_parts;
+            nodeidx_t last = nn.suplast('#');
+            if (last != BADNODE && last > (unsigned int)y) {
+                nodeidx_t begin = y + old_parts;
+                nodeidx_t end = last + 1;
+                nodeidx_t range = end - begin;
+                nn.supshift(begin, begin + delta, range, '#');
+            }
+        }
+        nn.supset(y, comment.c_str(), 0, '#');
+        refresh_view(w, dec);
+    }    
+}
+
 //---------------------------------------------------------------------------
 // Keyboard callback
 static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
     ea_t addr = 0;
+    strvec_t *sv = (strvec_t *)ud;
     if (shift == 0) {
-        strvec_t *sv = (strvec_t *)ud;
- //       msg("ct_keyboard handling 0x%x\n", key);
+//        msg("ct_keyboard handling 0x%x\n", key);
         switch (key) {
             case 'G':
                 if (ask_addr(&addr, "Jump address")) {
@@ -276,17 +410,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                     }
                 }
                 if (refresh) {
-                    vector<string> code;
-                    dec->ast->print(&code);
-                    strvec_t *sv = new strvec_t();
-                    for (vector<string>::iterator si = code.begin(); si != code.end(); si++) {
-                        sv->push_back(simpleline_t(si->c_str()));
-                    }
-
-                    callui(ui_custom_viewer_set_userdata, w, sv);
-                    refresh_custom_viewer(w);
-                    repaint_custom_viewer(w);
-                    dec->set_ud(sv);
+                    refresh_view(w, dec);
                 }
                 return true;
             }
@@ -306,7 +430,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                                 ea_t from = choose_xref(to);
                                 if (from != BADADDR) {
  //                                   msg("User selected xref 0x%lx\n", from);
-                                    ea_t fstart = get_func_start(from);
+                                    ea_t fstart = (ea_t)get_func_start(from);
                                     if (fstart != BADADDR) {
                                         decompile_at(fstart, w);
                                     }
@@ -390,14 +514,11 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                 }
                return true;
             }
-            case IK_OEM_2: { // This is key that IDA associates with '/'
+            case ';':
+            case IK_DIVIDE: {
                 //Add eol comment on current line
-                int x, y;
-                if (get_custom_viewer_place(w, false, &x, &y) == NULL) {
-                    return false;
-                }
-                msg("add comment on line %d\n", y);
-               return true;
+                add_new_comment(w);
+                return true;
             }
             case IK_ESCAPE: {
                 map<TWidget*,qvector<ea_t> >::iterator mi = histories.find(w);
@@ -423,8 +544,17 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                 return navigate_to_word(w, false);
             }
             default:
- //              msg("Detected key press: 0x%x\n", key);
+//               msg("Detected key press: 0x%x\n", key);
                break;
+        }
+    }
+    else {
+//        msg("ct_keyboard handling shift 0x%x\n", key);
+        switch (key) {
+            case '3':  { // shift-3 == '#'
+                add_new_comment(w);
+                return true;
+            }
         }
     }
     return false;
@@ -835,55 +965,42 @@ void decompile_at(ea_t addr, TWidget *w) {
         int res = do_decompile(func->start_ea, func->end_ea, &ast);
         if (ast) {
 #ifdef DEBUG
-           msg("got a Functon tree!\n");
+            msg("got a Functon tree!\n");
 #endif
-           Decompiled *dec = new Decompiled(ast, func);
+            Decompiled *dec = new Decompiled(ast, func);
 
-           //now try to map ghidra stack variable names to ida stack variable names
-           msg("mapping ida names to ghidra names\n");
-           map_ghidra_to_ida(dec);
+            //now try to map ghidra stack variable names to ida stack variable names
+            //msg("mapping ida names to ghidra names\n");
+            map_ghidra_to_ida(dec);
 
-           vector<string> code;
-#ifdef DEBUG
-           msg("Generating C code\n");
-#endif
-           dec->ast->print(&code);
+            strvec_t *sv = generate_code(dec);
 
-#ifdef DEBUG
-           msg("Displaying C code\n");
-#endif
-           strvec_t *sv = new strvec_t();
-           dec->set_ud(sv);
-           for (vector<string>::iterator si = code.begin(); si != code.end(); si++) {
-               sv->push_back(simpleline_t(si->c_str()));
-           }
+            qstring func_name;
+            qstring fmt;
+            get_func_name(&func_name, func->start_ea);
+            string title = get_available_title();
+            fmt.sprnt("Ghidra code  - %s", title.c_str());   // make the suffix change with more windows
 
-           qstring func_name;
-           qstring fmt;
-           get_func_name(&func_name, func->start_ea);
-           string title = get_available_title();
-           fmt.sprnt("Ghidra code  - %s", title.c_str());   // make the suffix change with more windows
+            simpleline_place_t s1;
+            simpleline_place_t s2((int)(sv->size() - 1));
 
-           simpleline_place_t s1;
-           simpleline_place_t s2((int)(sv->size() - 1));
-
-           if (w == NULL) {
-               w = create_custom_viewer(fmt.c_str(), &s1, &s2,
-                                        &s1, NULL, sv, &handlers, sv);
-               TWidget *code_view = create_code_viewer(w);
-               set_code_viewer_is_source(code_view);
-               display_widget(code_view, WOPN_DP_TAB);
-               histories[w].push_back(addr);
-               views[w] = title;
-               titles.insert(title);
-           }
-           else {
-               callui(ui_custom_viewer_set_userdata, w, sv);
-               refresh_custom_viewer(w);
-               repaint_custom_viewer(w);
-               delete function_map[w];
-           }
-           function_map[w] = dec;
+            if (w == NULL) {
+                 w = create_custom_viewer(fmt.c_str(), &s1, &s2,
+                                          &s1, NULL, sv, &handlers, sv);
+                 TWidget *code_view = create_code_viewer(w);
+                 set_code_viewer_is_source(code_view);
+                 display_widget(code_view, WOPN_DP_TAB);
+                 histories[w].push_back(addr);
+                 views[w] = title;
+                 titles.insert(title);
+            }
+            else {
+                 callui(ui_custom_viewer_set_userdata, w, sv);
+                 refresh_custom_viewer(w);
+                 repaint_custom_viewer(w);
+                 delete function_map[w];
+            }
+            function_map[w] = dec;
         }
 #ifdef DEBUG
         msg("do_decompile returned: %d\n", res);

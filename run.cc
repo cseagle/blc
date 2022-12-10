@@ -248,7 +248,7 @@ void do_pcode(const Funcdata *fd) {
 //       msg("%p: %u, (%s / %s): %s\n", (void*)sn.getAddr().getOffset(), sn.getOrder(), pcode->getOpcode()->getName().c_str(), get_opname(pcode->code()), os.str().c_str());
 #endif
     }
-    msg("Found %d PcodeOpTree\n", i);
+//    msg("Found %d PcodeOpTree\n", i);
 /*
     /// \brief Start of all (alive) PcodeOp objects attached to a specific Address
     PcodeOpTree::const_iterator beginOp(const Address &addr) const { return obank.begin(addr); }
