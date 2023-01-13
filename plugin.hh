@@ -56,6 +56,8 @@ bool is_function_start(uint64_t ea);
 
 void get_input_file_path(string &path);
 
+bool get_saved_sleigh_id(string &sleigh);
+bool set_saved_sleigh_id(string &sleigh);
 bool get_sleigh_id(string &sleigh);
 
 bool does_func_return(/*func_t*/ void *f);

@@ -175,6 +175,7 @@ void mips_setup(uint64_t start, uint64_t end) {
 }
 
 bool ghidra_init(void) {
+
     startDecompilerLibrary(ghidra_dir.c_str());
 
     err_stream = new stringstream();
@@ -184,7 +185,9 @@ bool ghidra_init(void) {
     string filename;
     get_input_file_path(filename);
 
-    get_sleigh_id(sleigh_id);
+    if (!get_saved_sleigh_id(sleigh_id)) {
+        get_sleigh_id(sleigh_id);
+    }
 
     //implement most of IfcLoadFile::execute here since file is
     //already loaded in IDA
@@ -218,6 +221,8 @@ bool ghidra_init(void) {
     }
 
     check_err_stream();
+
+    set_saved_sleigh_id(sleigh_id);
 
     msg("Ghidra architecture successfully created\n");
 

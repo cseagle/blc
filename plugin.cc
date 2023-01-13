@@ -118,7 +118,22 @@ static map<TWidget*,string> views;
 static map<TWidget*,Decompiled*> function_map;
 static set<string> titles;
 
+static bool processing_name_change;
+
 arch_map_t arch_map;
+
+bool is_current_function(ea_t ea) {
+    func_t *f = get_func(ea);
+    if (f) {
+        for (map<TWidget*,Decompiled*>::iterator i = function_map.begin(); i != function_map.end(); i++) {
+            Decompiled *dec = i->second;
+            if (dec->ida_func->start_ea == f->start_ea) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
 
 static string get_available_title() {
     string title("A");
@@ -260,6 +275,28 @@ void refresh_view(TWidget *w, Decompiled *dec) {
     repaint_custom_viewer(w);
 }
 
+// used to update local variable names in response to name changes in the disassembler
+// try to find a match based on frame offsets
+void update_local_name(func_t *f, ea_t offset, const char *newname) {
+    for (map<TWidget*,Decompiled*>::iterator i = function_map.begin(); i != function_map.end(); i++) {
+        Decompiled *dec = i->second;
+        if (dec->ida_func->start_ea == f->start_ea) {
+            msg("update_local_name, containing function is currently open it widgit\n");
+            for (map<string,LocalVar*>::iterator mi = dec->locals.begin(); mi != dec->locals.end(); mi++) {
+                LocalVar *lv = mi->second;
+                if (lv->offset == offset) { //stack var
+                    dec->ast->rename(lv->current_name, newname);
+                    dec->locals.erase(lv->current_name);
+                    lv->current_name = newname;
+                    dec->locals[newname] = lv;
+                    refresh_view(i->first, dec);
+                }
+            }
+
+        }
+    }
+}
+
 int find_cmt_start(Decompiled *dec, int y) {
     while (y >= 0) {
         qstring clean;
@@ -331,7 +368,8 @@ bool add_new_comment(TWidget *w) {
         }
         nn.supset(y, comment.c_str(), 0, '#');
         refresh_view(w, dec);
-    }    
+    }
+    return true;
 }
 
 //---------------------------------------------------------------------------
@@ -373,17 +411,18 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                                     return true;
                                 }
                                 if (lv->offset != BADADDR) { //stack var
- //                                  msg("renaming a stack var %s to %s\n", sword.c_str(), word.c_str());
-                                   if (set_member_name(get_frame(dec->ida_func), lv->offset, word.c_str())) {
-                                       lv->current_name = newname;
-                                       dec->locals.erase(sword);
-                                       dec->locals[newname] = lv;
-                                       dec->ast->rename(sword, newname);
-                                       refresh = true;
-                                   }
-                                   else {
- //                                      msg("set_member_name failed\n");
-                                   }
+ //                                   msg("renaming a stack var %s to %s\n", sword.c_str(), word.c_str());
+                                    processing_name_change = true;
+                                    if (set_member_name(get_frame(dec->ida_func), lv->offset, word.c_str())) {
+                                        lv->current_name = newname;
+                                        dec->locals.erase(sword);
+                                        dec->locals[newname] = lv;
+                                        dec->ast->rename(sword, newname);
+                                        refresh = true;
+                                    }
+                                    else {
+ //                                       msg("set_member_name failed\n");
+                                    }
                                 }
                                 else { //not stack var, reg var??
                                     qstring iname;
@@ -624,12 +663,72 @@ int do_ida_rename(qstring &name, ea_t func) {
             return 0;
         }
 //        msg("Custom rename: %s at adddress 0x%zx\n", name.c_str(), name_ea);
+        processing_name_change = true;
         res = set_name(name_ea, name.c_str());
         return res ? 2 : 3;
     }
 //    msg("rename: no change\n");
     return 1;
 }
+
+func_t *func_from_frame(struc_t *frame) {
+    if (frame->props & SF_FRAME) {
+        size_t qty = get_func_qty();
+        for (size_t i = 0; i < qty; i++) {
+           func_t *f = getn_func(i);
+           if (f->frame == frame->id) return f;
+        }
+    }
+    return NULL;
+}
+
+ssize_t idaapi blc_hook(void *user_data, int notification_code, va_list va) {
+    switch (notification_code) {
+        case idb_event::renamed: {
+            //global names, local names, and struct member renames all land here
+            if (processing_name_change) {
+                processing_name_change = false;
+                break;
+            }
+            string nm;
+            ea_t ea = va_arg(va, ea_t);
+            const char *name = va_arg(va, const char *);
+            bool local = va_arg(va, int) != 0;
+            const char *oldname = va_arg(va, const char *);
+
+            if (local) {
+                break;
+            }
+            if (is_named_addr(ea, nm)) {
+                // probably a global rather than a struct member
+                msg("rename: 0x%lx: %s ->  %s\n", ea, name, oldname);
+            }
+            else {
+                msg("rename: 0x%lx: %s ->  %s\n", ea, name, oldname);
+            }
+            break;
+        }
+        case idb_event::struc_member_renamed: {
+            if (processing_name_change) {
+                break;
+            }
+            struc_t *sptr =  va_arg(va, struc_t *);
+            member_t *mptr =  va_arg(va, member_t *);
+//            const char *newname = va_arg(va, const char*);
+            func_t *pfn = func_from_frame(sptr);
+            if (pfn) {
+                //renamed a function local
+                qstring name;
+                get_member_name(&name, mptr->id);
+                msg("stack var rename in 0x%x becomes %s (0x%x, 0x%x)\n", pfn->start_ea, name.c_str(), sptr->id, mptr->id);
+                //update_local_name(pfn, mptr->soff, name.c_str());
+            }
+            break;
+        }
+    }
+    return 0;
+}
+
 
 void init_ida_ghidra() {
     const char *ghidra = getenv("GHIDRA_DIR");
@@ -709,10 +808,39 @@ void init_ida_ghidra() {
     type_sizes["char"] = 1;
     type_sizes["wchar2"] = 2;
     type_sizes["wchar4"] = 4;
+
+    hook_to_notification_point(HT_IDB, blc_hook, NULL);
 }
 
 int get_proc_id() {
     return PH.id;
+}
+
+#if IDA_SDK_VERSION < 760
+inline uint inf_get_app_bitness(void) // return 16, 32, or 64
+{
+#ifdef __EA64__
+    uint32 f = getinf(INF_LFLAGS) & (LFLG_PC_FLAT | LFLG_64BIT);
+    return f == 0 ? 16 : f == LFLG_PC_FLAT ? 32 : 64;
+#else
+    return getinf_flag(INF_LFLAGS, LFLG_PC_FLAT) ? 32 : 16;
+#endif
+}
+#endif
+
+bool get_saved_sleigh_id(string &sleigh) {
+    qstring sleigh_id;
+    netnode nn(" $ sleigh_id", 0, true);
+    ssize_t sz = nn.supstr(&sleigh_id, 0x54321, 'G');
+    sleigh = sleigh_id.c_str();
+    return sleigh.size() > 1;
+}
+
+bool set_saved_sleigh_id(string &sleigh) {
+    qstring qsleigh_id;
+    netnode nn(" $ sleigh_id", 0, true);
+    nn.supset(0x54321, sleigh.c_str(), 0, 'G');
+    return true;
 }
 
 bool get_sleigh_id(string &sleigh) {
@@ -876,7 +1004,7 @@ uint64_t get_func_end(uint64_t ea) {
     return f ? f->end_ea : BADADDR;
 }
 
-//Create a Ghidra to Ida name mapping for a single loval variable (including formal parameters)
+//Create a Ghidra to Ida name mapping for a single local variable (including formal parameters)
 void map_var_from_decl(Decompiled *dec, VarDecl *decl) {
     Function *ast = dec->ast;
     func_t *func = dec->ida_func;
@@ -1040,6 +1168,7 @@ plugmod_t *idaapi blc_init(void) {
 }
 
 blc_plugmod_t::~blc_plugmod_t(void) {
+    unhook_from_notification_point(HT_IDB, blc_hook, NULL);
     ghidra_term();
 }
 
