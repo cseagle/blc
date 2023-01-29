@@ -74,6 +74,21 @@ using std::istreambuf_iterator;
 using std::map;
 using std::set;
 
+struct blc_plugmod_t : public plugmod_t {
+
+    bool processing_name_change;
+    
+    blc_plugmod_t();   
+
+    /// Invoke the plugin.
+    virtual bool idaapi run(size_t arg);
+
+    /// Virtual destructor.
+    virtual ~blc_plugmod_t();
+};
+
+blc_plugmod_t *plug;
+
 struct LocalVar {
     string ghidra_name;
     string current_name;  //current display name in disassembly display
@@ -117,8 +132,6 @@ static map<TWidget*,qvector<ea_t> > histories;
 static map<TWidget*,string> views;
 static map<TWidget*,Decompiled*> function_map;
 static set<string> titles;
-
-static bool processing_name_change;
 
 arch_map_t arch_map;
 
@@ -412,7 +425,7 @@ static bool idaapi ct_keyboard(TWidget *w, int key, int shift, void *ud) {
                                 }
                                 if (lv->offset != BADADDR) { //stack var
  //                                   msg("renaming a stack var %s to %s\n", sword.c_str(), word.c_str());
-                                    processing_name_change = true;
+                                    plug->processing_name_change = true;
                                     if (set_member_name(get_frame(dec->ida_func), lv->offset, word.c_str())) {
                                         lv->current_name = newname;
                                         dec->locals.erase(sword);
@@ -663,7 +676,7 @@ int do_ida_rename(qstring &name, ea_t func) {
             return 0;
         }
 //        msg("Custom rename: %s at adddress 0x%zx\n", name.c_str(), name_ea);
-        processing_name_change = true;
+        plug->processing_name_change = true;
         res = set_name(name_ea, name.c_str());
         return res ? 2 : 3;
     }
@@ -683,11 +696,12 @@ func_t *func_from_frame(struc_t *frame) {
 }
 
 ssize_t idaapi blc_hook(void *user_data, int notification_code, va_list va) {
+    blc_plugmod_t *blc = (blc_plugmod_t*)user_data;
     switch (notification_code) {
         case idb_event::renamed: {
             //global names, local names, and struct member renames all land here
-            if (processing_name_change) {
-                processing_name_change = false;
+            if (blc->processing_name_change) {
+                blc->processing_name_change = false;
                 break;
             }
             string nm;
@@ -701,15 +715,15 @@ ssize_t idaapi blc_hook(void *user_data, int notification_code, va_list va) {
             }
             if (is_named_addr(ea, nm)) {
                 // probably a global rather than a struct member
-                msg("rename: 0x%lx: %s ->  %s\n", ea, name, oldname);
+                //msg("rename: 0x%lx: %s ->  %s\n", ea, name, oldname);
             }
             else {
-                msg("rename: 0x%lx: %s ->  %s\n", ea, name, oldname);
+                //msg("rename: 0x%lx: %s ->  %s\n", ea, name, oldname);
             }
             break;
         }
         case idb_event::struc_member_renamed: {
-            if (processing_name_change) {
+            if (blc->processing_name_change) {
                 break;
             }
             struc_t *sptr =  va_arg(va, struc_t *);
@@ -720,7 +734,7 @@ ssize_t idaapi blc_hook(void *user_data, int notification_code, va_list va) {
                 //renamed a function local
                 qstring name;
                 get_member_name(&name, mptr->id);
-                msg("stack var rename in 0x%x becomes %s (0x%x, 0x%x)\n", pfn->start_ea, name.c_str(), sptr->id, mptr->id);
+                //msg("stack var rename in 0x%x becomes %s (0x%x, 0x%x)\n", pfn->start_ea, name.c_str(), sptr->id, mptr->id);
                 //update_local_name(pfn, mptr->soff, name.c_str());
             }
             break;
@@ -808,8 +822,6 @@ void init_ida_ghidra() {
     type_sizes["char"] = 1;
     type_sizes["wchar2"] = 2;
     type_sizes["wchar4"] = 4;
-
-    hook_to_notification_point(HT_IDB, blc_hook, NULL);
 }
 
 int get_proc_id() {
@@ -845,7 +857,9 @@ bool set_saved_sleigh_id(string &sleigh) {
 
 bool get_sleigh_id(string &sleigh) {
     sleigh.clear();
-    map<int,string>::iterator proc = proc_map.find(get_proc_id());
+    int proc_id = get_proc_id();
+    msg("Searching for proc id: 0x%x\n", proc_id);
+    map<int,string>::iterator proc = proc_map.find(proc_id);
     if (proc == proc_map.end()) {
         return false;
     }
@@ -858,7 +872,7 @@ bool get_sleigh_id(string &sleigh) {
 
     sleigh = proc->second + (is_be ? ":BE" : ":LE");
 
-    switch (get_proc_id()) {
+    switch (proc_id) {
         case PLFM_6502:
             sleigh += ":16:default";
             break;
@@ -1147,20 +1161,18 @@ const char *tag_remove(const char *tagged) {
     return ll.c_str();
 }
 
-struct blc_plugmod_t : public plugmod_t {
-   /// Invoke the plugin.
-   virtual bool idaapi run(size_t arg);
-
-   /// Virtual destructor.
-   virtual ~blc_plugmod_t();
-};
+blc_plugmod_t::blc_plugmod_t() {
+    processing_name_change = false;
+    hook_to_notification_point(HT_IDB, blc_hook, this);
+}
 
 plugmod_t *idaapi blc_init(void) {
     //do ida related init
     init_ida_ghidra();
 
     if (ghidra_init()) {
-        return new blc_plugmod_t();
+        plug = new blc_plugmod_t();
+        return plug;
     }
     else {
         return NULL;
@@ -1168,7 +1180,7 @@ plugmod_t *idaapi blc_init(void) {
 }
 
 blc_plugmod_t::~blc_plugmod_t(void) {
-    unhook_from_notification_point(HT_IDB, blc_hook, NULL);
+    unhook_from_notification_point(HT_IDB, blc_hook, this);
     ghidra_term();
 }
 

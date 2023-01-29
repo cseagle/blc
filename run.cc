@@ -186,7 +186,9 @@ bool ghidra_init(void) {
     get_input_file_path(filename);
 
     if (!get_saved_sleigh_id(sleigh_id)) {
-        get_sleigh_id(sleigh_id);
+        if (!get_sleigh_id(sleigh_id)) {
+            return false;
+        }
     }
 
     //implement most of IfcLoadFile::execute here since file is
