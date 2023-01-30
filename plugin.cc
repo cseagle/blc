@@ -77,8 +77,8 @@ using std::set;
 struct blc_plugmod_t : public plugmod_t {
 
     bool processing_name_change;
-    
-    blc_plugmod_t();   
+
+    blc_plugmod_t();
 
     /// Invoke the plugin.
     virtual bool idaapi run(size_t arg);
