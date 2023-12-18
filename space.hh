@@ -16,11 +16,13 @@
 /// \file space.hh
 /// \brief Classes for describing address spaces
 
-#ifndef __CPUI_SPACE__
-#define __CPUI_SPACE__
+#ifndef __SPACE_HH__
+#define __SPACE_HH__
 
 #include "error.hh"
 #include "marshal.hh"
+
+namespace ghidra {
 
 /// \brief Fundemental address space types
 ///
@@ -45,15 +47,7 @@ extern AttributeId ATTRIB_DEADCODEDELAY;	///< Marshaling attribute "deadcodedela
 extern AttributeId ATTRIB_DELAY;	///< Marshaling attribute "delay"
 extern AttributeId ATTRIB_LOGICALSIZE;	///< Marshaling attribute "logicalsize"
 extern AttributeId ATTRIB_PHYSICAL;	///< Marshaling attribute "physical"
-extern AttributeId ATTRIB_PIECE1;	///< Marshaling attribute "piece1"
-extern AttributeId ATTRIB_PIECE2;	///< Marshaling attribute "piece2"
-extern AttributeId ATTRIB_PIECE3;	///< Marshaling attribute "piece3"
-extern AttributeId ATTRIB_PIECE4;	///< Marshaling attribute "piece4"
-extern AttributeId ATTRIB_PIECE5;	///< Marshaling attribute "piece5"
-extern AttributeId ATTRIB_PIECE6;	///< Marshaling attribute "piece6"
-extern AttributeId ATTRIB_PIECE7;	///< Marshaling attribute "piece7"
-extern AttributeId ATTRIB_PIECE8;	///< Marshaling attribute "piece8"
-extern AttributeId ATTRIB_PIECE9;	///< Marshaling attribute "piece9"
+extern AttributeId ATTRIB_PIECE;	///< Marshaling attribute "piece"
 
 /// \brief A region where processor data is stored
 ///
@@ -68,8 +62,8 @@ extern AttributeId ATTRIB_PIECE9;	///< Marshaling attribute "piece9"
 /// offsets ranging from 0x00000000 to 0xffffffff within the space
 /// for a total of 2^32 addressable bytes within the space.
 /// There can be multiple address spaces, and it is typical to have spaces
-///     - \b ram        Modelling the main processor address bus
-///     - \b register   Modelling a processors registers
+///     - \b ram        Modeling the main processor address bus
+///     - \b register   Modeling a processors registers
 ///
 /// The processor specification can set up any address spaces it
 /// needs in an arbitrary manner, but \e all data manipulated by
@@ -80,7 +74,7 @@ extern AttributeId ATTRIB_PIECE9;	///< Marshaling attribute "piece9"
 /// The analysis engine also uses additional address spaces to
 /// model special concepts.  These include
 ///     - \b const        There is a \e constant address space for
-///                       modelling constant values in pcode expressions
+///                       modeling constant values in p-code expressions
 ///                       (See ConstantSpace)
 ///     - \b unique       There is always a \e unique address space used
 ///                       as a pool for temporary registers. (See UniqueSpace)
@@ -163,6 +157,7 @@ public:
   virtual const VarnodeData &getSpacebaseFull(int4 i) const;	///< Return original spacebase register before truncation
   virtual bool stackGrowsNegative(void) const;		///< Return \b true if a stack in this space grows negative
   virtual AddrSpace *getContain(void) const;  ///< Return this space's containing space (if any)
+  virtual int4 overlapJoin(uintb offset,int4 size,AddrSpace *pointSpace,uintb pointOff,int4 pointSkip) const;
   virtual void encodeAttributes(Encoder &encoder,uintb offset) const;  ///< Encode address attributes to a stream
   virtual void encodeAttributes(Encoder &encoder,uintb offset,int4 size) const;   ///< Encode an address and size attributes to a stream
   virtual uintb decodeAttributes(Decoder &decoder,uint4 &size) const;   ///< Recover an offset and size
@@ -173,8 +168,8 @@ public:
 
   static uintb addressToByte(uintb val,uint4 ws); ///< Scale from addressable units to byte units
   static uintb byteToAddress(uintb val,uint4 ws); ///< Scale from byte units to addressable units
-  static int4 addressToByteInt(int4 val,uint4 ws); ///< Scale int4 from addressable units to byte units
-  static int4 byteToAddressInt(int4 val,uint4 ws); ///< Scale int4 from byte units to addressable units
+  static int8 addressToByteInt(int8 val,uint4 ws); ///< Scale int4 from addressable units to byte units
+  static int8 byteToAddressInt(int8 val,uint4 ws); ///< Scale int4 from byte units to addressable units
   static bool compareByIndex(const AddrSpace *a,const AddrSpace *b);	///< Compare two spaces by their index
 };
 
@@ -193,6 +188,7 @@ public:
 class ConstantSpace : public AddrSpace {
 public:
   ConstantSpace(AddrSpaceManager *m,const Translate *t); ///< Only constructor
+  virtual int4 overlapJoin(uintb offset,int4 size,AddrSpace *pointSpace,uintb pointOff,int4 pointSkip) const;
   virtual void printRaw(ostream &s,uintb offset) const;
   virtual void saveXml(ostream &s) const;
   virtual void decode(Decoder &decoder);
@@ -238,8 +234,10 @@ public:
 /// mapping the logical address in this space to its physical pieces.  Offsets into this space do not
 /// have an absolute meaning, the database may vary what offset is assigned to what set of pieces.
 class JoinSpace : public AddrSpace {
+  static const int4 MAX_PIECES = 64;	///< Maximum number of pieces that can be marshaled in one \e join address
 public:
   JoinSpace(AddrSpaceManager *m,const Translate *t,int4 ind);
+  virtual int4 overlapJoin(uintb offset,int4 size,AddrSpace *pointSpace,uintb pointOff,int4 pointSkip) const;
   virtual void encodeAttributes(Encoder &encoder,uintb offset) const;
   virtual void encodeAttributes(Encoder &encoder,uintb offset,int4 size) const;
   virtual uintb decodeAttributes(Decoder &decoder,uint4 &size) const;
@@ -532,21 +530,21 @@ inline uintb AddrSpace::byteToAddress(uintb val,uint4 ws) {
   return val/ws;
 }
 
-/// Given an int4 offset into an address space based on the addressable unit size (wordsize),
+/// Given an int8 offset into an address space based on the addressable unit size (wordsize),
 /// convert it into a byte relative offset
 /// \param val is the offset to convert
 /// \param ws is the number of bytes in the addressable word
 /// \return the scaled offset
-inline int4 AddrSpace::addressToByteInt(int4 val,uint4 ws) {
+inline int8 AddrSpace::addressToByteInt(int8 val,uint4 ws) {
   return val*ws;
 }
 
-/// Given an int4 offset in an address space based on bytes, convert it
+/// Given an int8 offset in an address space based on bytes, convert it
 /// into an offset relative to the addressable unit of the space (wordsize)
 /// \param val is the offset to convert
 /// \param ws is the number of bytes in the addressable word
 /// \return the scaled offset
-inline int4 AddrSpace::byteToAddressInt(int4 val,uint4 ws) {
+inline int8 AddrSpace::byteToAddressInt(int8 val,uint4 ws) {
   return val/ws;
 }
 
@@ -558,4 +556,5 @@ inline bool AddrSpace::compareByIndex(const AddrSpace *a,const AddrSpace *b) {
   return (a->index < b->index);
 }
 
+} // End namespace ghidra
 #endif

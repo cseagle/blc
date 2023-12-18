@@ -16,6 +16,8 @@
 #include "slghpatexpress.hh"
 #include "sleighbase.hh"
 
+namespace ghidra {
+
 int4 TokenPattern::resolveTokens(const TokenPattern &tok1,const TokenPattern &tok2)
 
 {				// Use the token lists to decide how the two patterns
@@ -582,9 +584,9 @@ intb TokenField::getValue(ParserWalker &walker) const
   
   res >>= shift;
   if (signbit)
-    sign_extend(res,bitend-bitstart);
+    res = sign_extend(res,bitend-bitstart);
   else
-    zero_extend(res,bitend-bitstart);
+    res = zero_extend(res,bitend-bitstart);
   return res;
 }
 
@@ -666,9 +668,9 @@ intb ContextField::getValue(ParserWalker &walker) const
   intb res = getContextBytes(walker,startbyte,endbyte);
   res >>= shift;
   if (signbit)
-    sign_extend(res,endbit-startbit);
+    res = sign_extend(res,endbit-startbit);
   else
-    zero_extend(res,endbit-startbit);
+    res = zero_extend(res,endbit-startbit);
   return res;
 }
 
@@ -1683,3 +1685,5 @@ void EquationRightEllipsis::operandOrder(Constructor *ct,vector<OperandSymbol *>
 {
   eq->operandOrder(ct,order);	// List operands
 }
+
+} // End namespace ghidra

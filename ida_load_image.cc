@@ -26,6 +26,8 @@
 
 #include "ida_load_image.hh"
 
+using ghidra::LowlevelError;
+
 ida_load_image::ida_load_image(ida_arch *a) : LoadImage("ida_progam") {
   arch = a;
 }

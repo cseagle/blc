@@ -16,8 +16,8 @@
 /// \file ifacedecomp.hh
 /// \brief Console interface commands for the decompiler engine
 
-#ifndef __IFACE_DECOMP__
-#define __IFACE_DECOMP__
+#ifndef __IFACEDECOMP_HH__
+#define __IFACEDECOMP_HH__
 
 #include "graph.hh"
 #include "grammar.hh"
@@ -27,6 +27,8 @@
 #ifdef CPUI_RULECOMPILE
 #include "rulecompile.hh"
 #endif
+
+namespace ghidra {
 
 /// \brief Interface capability point for all decompiler commands
 class IfaceDecompCapability : public IfaceCapability {
@@ -157,6 +159,16 @@ public:
 };
 
 class IfcMaphash : public IfaceDecompCommand {
+public:
+  virtual void execute(istream &s);
+};
+
+class IfcMapParam : public IfaceDecompCommand {
+public:
+  virtual void execute(istream &s);
+};
+
+class IfcMapReturn : public IfaceDecompCommand {
 public:
   virtual void execute(istream &s);
 };
@@ -319,6 +331,11 @@ public:
 };
 
 class IfcRemove : public IfaceDecompCommand {
+public:
+  virtual void execute(istream &s);
+};
+
+class IfcIsolate : public IfaceDecompCommand {
 public:
   virtual void execute(istream &s);
 };
@@ -651,4 +668,5 @@ public:
 
 #endif
 
+} // End namespace ghidra
 #endif

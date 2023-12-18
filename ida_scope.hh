@@ -33,6 +33,13 @@
 #include "ida_minimal.hh"
 #include "ida_load_image.hh"
 
+using ghidra::ScopeInternal;
+using ghidra::SymbolEntry;
+using ghidra::Datatype;
+using ghidra::Funcdata;
+using ghidra::ExternRefSymbol;
+using ghidra::LabSymbol;
+
 /// \brief An implementation of the Scope interface by querying a ida client for Symbol information
 ///
 /// This object is generally instantiated once for an executable and

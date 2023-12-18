@@ -16,6 +16,8 @@
 #include "sleigh_arch.hh"
 #include "inject_sleigh.hh"
 
+namespace ghidra {
+
 AttributeId ATTRIB_DEPRECATED = AttributeId("deprecated",136);
 AttributeId ATTRIB_ENDIAN = AttributeId("endian",137);
 AttributeId ATTRIB_PROCESSOR = AttributeId("processor",138);
@@ -197,8 +199,14 @@ PcodeInjectLibrary *SleighArchitecture::buildPcodeInjectLibrary(void)
 void SleighArchitecture::buildTypegrp(DocumentStorage &store)
 
 {
-  const Element *el = store.getTag("coretypes");
   types = new TypeFactory(this); // Initialize the object
+}
+
+void SleighArchitecture::buildCoreTypes(DocumentStorage &store)
+
+{
+  const Element *el = store.getTag("coretypes");
+
   if (el != (const Element *)0) {
     XmlDecode decoder(this,el);
     types->decodeCoreTypes(decoder);
@@ -617,3 +625,5 @@ void SleighArchitecture::shutdown(void)
   translators.clear();
   // description.clear();  // static vector is destroyed by the normal exit handler
 }
+
+} // End namespace ghidra

@@ -20,6 +20,8 @@ extern "C" {
 #include "pcodeparse.hh"
 #include "blockaction.hh"
 
+namespace ghidra {
+
 // Constructing this registers the capability
 IfaceDecompCapability IfaceDecompCapability::ifaceDecompCapability;
 
@@ -53,6 +55,8 @@ void IfaceDecompCapability::registerCommands(IfaceStatus *status)
   status->registerCom(new IfcCleararch(),"clear","architecture");
   status->registerCom(new IfcMapaddress(),"map","address");
   status->registerCom(new IfcMaphash(),"map","hash");
+  status->registerCom(new IfcMapParam(),"map","param");
+  status->registerCom(new IfcMapReturn(),"map","return");
   status->registerCom(new IfcMapfunction(),"map","function");
   status->registerCom(new IfcMapexternalref(),"map","externalref");
   status->registerCom(new IfcMaplabel(),"map","label");
@@ -114,6 +118,7 @@ void IfaceDecompCapability::registerCommands(IfaceStatus *status)
   status->registerCom(new IfcRename(),"rename");
   status->registerCom(new IfcRetype(),"retype");
   status->registerCom(new IfcRemove(),"remove");
+  status->registerCom(new IfcIsolate(),"isolate");
   status->registerCom(new IfcLockPrototype(),"prototype","lock");
   status->registerCom(new IfcUnlockPrototype(),"prototype","unlock");
   status->registerCom(new IfcCommentInstr(),"comment","instruction");
@@ -593,6 +598,49 @@ void IfcMaphash::execute(istream &s)
 
   Symbol *sym = dcp->fd->getScopeLocal()->addDynamicSymbol(name,ct,addr,hash);
   sym->getScope()->setAttribute(sym,Varnode::namelock|Varnode::typelock);
+}
+
+/// \class IfcMapParam
+/// \brief Map a parameter symbol for the current function: `map param #i <address> <typedeclaration>`
+///
+/// The position of the parameter in the input list is parsed as an integer, starting at 0.
+/// The address range used for parameter is explicitly set.  The data-type and name of the parameter
+/// are parsed from the type declaration.  The parameter is treated as name and type locked.
+void IfcMapParam::execute(istream &s)
+
+{
+  if (dcp->fd == (Funcdata *)0)
+    throw IfaceExecutionError("No function loaded");
+  int4 i;
+  string name;
+  int4 size;
+  ParameterPieces piece;
+  s >> dec >> i;		// Position of the parameter
+  piece.addr = parse_machaddr(s,size,*dcp->conf->types);	// Starting address of parameter
+  piece.type = parse_type(s,name,dcp->conf);
+  piece.flags = ParameterPieces::typelock | ParameterPieces::namelock;
+
+  dcp->fd->getFuncProto().setParam(i, name, piece);
+}
+
+/// \class IfcMapReturn
+/// \brief Map the return storage for the current function: `map return <address> <typedeclaration>`
+///
+/// The address range used for return storage is explicitly set, and the return value is set to the
+/// parsed data-type.  The function's output is considered locked.
+void IfcMapReturn::execute(istream &s)
+
+{
+  if (dcp->fd == (Funcdata *)0)
+    throw IfaceExecutionError("No function loaded");
+  string name;
+  int4 size;
+  ParameterPieces piece;
+  piece.addr = parse_machaddr(s,size,*dcp->conf->types);	// Starting address of return storage
+  piece.type = parse_type(s,name,dcp->conf);
+  piece.flags = ParameterPieces::typelock;
+
+  dcp->fd->getFuncProto().setOutput(piece);
 }
 
 /// \class IfcMapfunction
@@ -1363,6 +1411,29 @@ void IfcRetype::execute(istream &s)
     sym->getScope()->renameSymbol(sym,newname);
     sym->getScope()->setAttribute(sym,Varnode::namelock);
   }
+}
+
+/// \class IfcIsolate
+/// \brief Mark a symbol as isolated from speculative merging: `isolate <name>`
+void IfcIsolate::execute(istream &s)
+
+{
+  string symbolName;
+
+  s >> ws >> symbolName;
+  if (symbolName.size() == 0)
+    throw IfaceParseError("Missing symbol name");
+
+  Symbol *sym;
+  vector<Symbol *> symList;
+  dcp->readSymbol(symbolName,symList);
+  if (symList.empty())
+    throw IfaceExecutionError("No symbol named: "+symbolName);
+  if (symList.size() == 1)
+    sym = symList[0];
+  else
+    throw IfaceExecutionError("More than one symbol named: "+symbolName);
+  sym->setIsolated(true);
 }
 
 /// The Varnode is selected from the \e current function.  It is specified as a
@@ -3588,3 +3659,5 @@ void IfcSource::execute(istream &s)
   s >> filename;
   status->pushScript(filename,filename+"> ");
 }
+
+} // End namespace ghidra

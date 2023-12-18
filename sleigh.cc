@@ -16,6 +16,8 @@
 #include "sleigh.hh"
 #include "loadimage.hh"
 
+namespace ghidra {
+
 PcodeCacher::PcodeCacher(void)
 
 {
@@ -186,6 +188,12 @@ AddrSpace *SleighBuilder::generatePointer(const VarnodeTpl *vntpl,VarnodeData &v
   return hand.space;
 }
 
+/// \brief Add in an additional offset to the address of a dynamic Varnode
+///
+/// The Varnode is ultimately read/written via LOAD/STORE operation AND has undergone a truncation
+/// operation, so an additional offset needs to get added to the pointer referencing the Varnode.
+/// \param op is the LOAD/STORE operation being generated
+/// \param vntpl is the dynamic Varnode
 void SleighBuilder::generatePointerAdd(PcodeData *op,const VarnodeTpl *vntpl)
 
 {
@@ -795,3 +803,5 @@ void Sleigh::allowContextSet(bool val) const
 {
   cache->allowSet(val);
 }
+
+} // End namespace ghidra

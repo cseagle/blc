@@ -16,6 +16,8 @@
 #include "printjava.hh"
 #include "funcdata.hh"
 
+namespace ghidra {
+
 OpToken PrintJava::instanceof = { "instanceof", "", 2, 60, true, OpToken::binary, 1, 0, (OpToken *)0 };
 
 // Constructing this registers the capability
@@ -105,7 +107,7 @@ void PrintJava::pushTypeStart(const Datatype *ct,bool noident)
     pushAtom(Atom(nm,typetoken,EmitMarkup::type_color,ct));
   }
   else {
-    pushAtom(Atom(ct->getName(),typetoken,EmitMarkup::type_color,ct));
+    pushAtom(Atom(ct->getDisplayName(),typetoken,EmitMarkup::type_color,ct));
   }
   for(int4 i=0;i<arrayCount;++i)
     pushAtom(Atom(EMPTY_STRING,blanktoken,EmitMarkup::no_color));		// Fill in the blank array index
@@ -232,7 +234,7 @@ void PrintJava::opLoad(const PcodeOp *op)
     pushOp(&subscript,op);
   pushVn(op->getIn(1),op,m);
   if (printArrayRef)
-    push_integer(0,4,false,(Varnode *)0,op);
+    push_integer(0,4,false,syntax,(Varnode *)0,op);
 }
 
 void PrintJava::opStore(const PcodeOp *op)
@@ -243,7 +245,7 @@ void PrintJava::opStore(const PcodeOp *op)
   if (needZeroArray(op->getIn(1))) {
     pushOp(&subscript,op);
     pushVn(op->getIn(1),op,m);
-    push_integer(0,4,false,(Varnode *)0,op);
+    push_integer(0,4,false,syntax,(Varnode *)0,op);
     pushVn(op->getIn(2),op,mods);
   }
   else {
@@ -330,7 +332,7 @@ void PrintJava::opCpoolRefOp(const PcodeOp *op)
 	}
 	pushOp(&instanceof,op);
 	pushVn(vn0,op,mods);
-	pushAtom(Atom(dt->getName(),syntax,EmitMarkup::type_color,op,outvn));
+	pushAtom(Atom(dt->getDisplayName(),syntax,EmitMarkup::type_color,op,outvn));
 	break;
       }
     case CPoolRecord::primitive:		// Should be eliminated
@@ -359,3 +361,5 @@ void PrintJava::opCpoolRefOp(const PcodeOp *op)
     }
   }
 }
+
+} // End namespace ghidra

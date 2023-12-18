@@ -16,6 +16,8 @@
 #include "address.hh"
 #include "translate.hh"
 
+namespace ghidra {
+
 AttributeId ATTRIB_FIRST = AttributeId("first",27);
 AttributeId ATTRIB_LAST = AttributeId("last",28);
 AttributeId ATTRIB_UNIQ = AttributeId("uniq",29);
@@ -184,7 +186,7 @@ bool Address::isContiguous(int4 sz,const Address &loaddr,int4 losz) const
 }
 
 /// If \b this is (originally) a \e join address, reevaluate it in terms of its new
-/// \e offset and \e siz, changing the space and offset if necessary.
+/// \e offset and \e size, changing the space and offset if necessary.
 /// \param size is the new size in bytes of the underlying object
 void Address::renormalize(int4 size) {
   if (base->getType() == IPTR_JOIN)
@@ -664,45 +666,11 @@ uintb uintb_negate(uintb in,int4 size)
 uintb sign_extend(uintb in,int4 sizein,int4 sizeout)
 
 {
-  int4 signbit;
-  uintb mask;
-
-  signbit = sizein*8 - 1;
-  in &= calc_mask(sizein);
-  if (sizein >= sizeout) return in;
-  if ((in>>signbit) != 0) {
-    mask = calc_mask(sizeout);
-    uintb tmp = mask << signbit; // Split shift into two pieces
-    tmp = (tmp<<1) & mask;	// In case, everything is shifted out
-    in |= tmp;
-  }
-  return in;
-}
-
-/// Sign extend \b val starting at \b bit
-/// \param val is a reference to the value to be sign-extended
-/// \param bit is the index of the bit to extend from (0=least significant bit)
-void sign_extend(intb &val,int4 bit)
-
-{
-  intb mask = 0;
-  mask = (~mask)<<bit;
-  if (((val>>bit)&1)!=0)
-    val |= mask;
-  else
-    val &= (~mask);
-}
-
-/// Zero extend \b val starting at \b bit
-/// \param val is a reference to the value to be zero extended
-/// \param bit is the index of the bit to extend from (0=least significant bit)
-void zero_extend(intb &val,int4 bit)
-
-{
-  intb mask = 0;
-  mask = (~mask)<<bit;
-  mask <<= 1;
-  val &= (~mask);
+  intb sval = in;
+  sval <<= (sizeof(intb) - sizein) * 8;
+  uintb res = (uintb)(sval >> (sizeout - sizein) * 8);
+  res >>= (sizeof(uintb) - sizeout)*8;
+  return res;
 }
 
 /// Swap the least significant \b size bytes in \b val
@@ -991,3 +959,5 @@ int4 power2Divide(int4 n,uint8 divisor,uint8 &q,uint8 &r)
   }
   return 0;
 }
+
+} // End namespace ghidra

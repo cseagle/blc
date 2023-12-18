@@ -22,6 +22,10 @@
 
 //#define DEBUG_SCOPE 1
 
+using ghidra::AddrSpace;
+using ghidra::FunctionSymbol;
+using ghidra::type_metatype;
+
 #ifdef DEBUG_SCOPE
 #define dmsg(x, ...) msg(x, __VA_ARGS__)
 #else
@@ -86,14 +90,14 @@ Symbol *ida_scope::ida_query(const Address &addr) const {
             if (is_pointer_var(ea, aspace->getAddrSize(), &tgt)) {
                dmsg("ida_scope::ida_query - %s looks like a pointer to 0x%zx\n", symname.c_str(), tgt);
                dmsg("ida_scope::ida_query - 0x%zx may be read only: %d\n", ea, is_read_only(ea));
-               Datatype *pt = glb->types->getBase(1, TYPE_UNKNOWN);
+               Datatype *pt = glb->types->getBase(1, type_metatype::TYPE_UNKNOWN);
                Datatype *dt = glb->types->getTypePointer(aspace->getAddrSize(), pt, 1);
 //               Datatype *dt = glb->types->getBase(aspace->getAddrSize(), TYPE_PTR);
                sym = new Symbol(scope, symname, dt);
             }
             else {
                dmsg("ida_scope::ida_query - %s using type unknown\n", symname.c_str());
-               Datatype *dt = glb->types->getBase(get_item_size(ea), TYPE_UNKNOWN);
+               Datatype *dt = glb->types->getBase(get_item_size(ea), type_metatype::TYPE_UNKNOWN);
                sym = new Symbol(scope, symname, dt);
             }
          }

@@ -63,28 +63,30 @@
 /* Pull parsers.  */
 #define YYPULL 1
 
-
+/* Substitute the type names.  */
+#define YYSTYPE         PCODESTYPE
 /* Substitute the variable and function names.  */
-#define yyparse         pcode_parse
-#define yylex           pcode_lex
-#define yyerror         pcode_error
-#define yydebug         pcode_debug
-#define yynerrs         pcode_nerrs
-#define yylval          pcode_lval
-#define yychar          pcode_char
+#define yyparse         pcodeparse
+#define yylex           pcodelex
+#define yyerror         pcodeerror
+#define yydebug         pcodedebug
+#define yynerrs         pcodenerrs
+#define yylval          pcodelval
+#define yychar          pcodechar
 
 /* First part of user prologue.  */
-#line 16 "pcodeparse.y"
+#line 17 "pcodeparse.y"
 
 #include "pcodeparse.hh"
 
-  //#define YYERROR_VERBOSE
-  extern int yylex(void);
-  static PcodeSnippet *pcode;
-  extern int yydebug;
-  extern int yyerror(const char *str );
+//#define YYERROR_VERBOSE
+namespace ghidra {
 
-#line 88 "pcodeparse.tab.cc"
+extern int pcodelex(void);
+static PcodeSnippet *pcode;
+extern int pcodeerror(const char *str );
+
+#line 90 "pcodeparse.tab.cc"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -109,22 +111,30 @@
 
 
 /* Debug traces.  */
-#ifndef YYDEBUG
-# define YYDEBUG 0
-#endif
+#ifndef PCODEDEBUG
+# if defined YYDEBUG
 #if YYDEBUG
-extern int pcode_debug;
+#   define PCODEDEBUG 1
+#  else
+#   define PCODEDEBUG 0
+#  endif
+# else /* ! defined YYDEBUG */
+#  define PCODEDEBUG 0
+# endif /* ! defined YYDEBUG */
+#endif  /* ! defined PCODEDEBUG */
+#if PCODEDEBUG
+extern int pcodedebug;
 #endif
 
 /* Token kinds.  */
-#ifndef YYTOKENTYPE
-# define YYTOKENTYPE
-  enum yytokentype
+#ifndef PCODETOKENTYPE
+# define PCODETOKENTYPE
+  enum pcodetokentype
   {
-    YYEMPTY = -2,
-    YYEOF = 0,                     /* "end of file"  */
-    YYerror = 256,                 /* error  */
-    YYUNDEF = 257,                 /* "invalid token"  */
+    PCODEEMPTY = -2,
+    PCODEEOF = 0,                  /* "end of file"  */
+    PCODEerror = 256,              /* error  */
+    PCODEUNDEF = 257,              /* "invalid token"  */
     OP_BOOL_OR = 258,              /* OP_BOOL_OR  */
     OP_BOOL_AND = 259,             /* OP_BOOL_AND  */
     OP_BOOL_XOR = 260,             /* OP_BOOL_XOR  */
@@ -185,14 +195,14 @@ extern int pcode_debug;
     NEXT2SYM = 315,                /* NEXT2SYM  */
     LABELSYM = 316                 /* LABELSYM  */
   };
-  typedef enum yytokentype yytoken_kind_t;
+  typedef enum pcodetokentype pcodetoken_kind_t;
 #endif
 
 /* Value type.  */
-#if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-union YYSTYPE
+#if ! defined PCODESTYPE && ! defined PCODESTYPE_IS_DECLARED
+union PCODESTYPE
 {
-#line 26 "pcodeparse.y"
+#line 28 "pcodeparse.y"
 
   uintb *i;
   string *str;
@@ -213,19 +223,19 @@ union YYSTYPE
   VarnodeSymbol *varsym;
   SpecificSymbol *specsym;
 
-#line 217 "pcodeparse.tab.cc"
+#line 227 "pcodeparse.tab.cc"
 
 };
-typedef union YYSTYPE YYSTYPE;
-# define YYSTYPE_IS_TRIVIAL 1
-# define YYSTYPE_IS_DECLARED 1
+typedef union PCODESTYPE PCODESTYPE;
+# define PCODESTYPE_IS_TRIVIAL 1
+# define PCODESTYPE_IS_DECLARED 1
 #endif
 
 
-extern YYSTYPE pcode_lval;
+extern PCODESTYPE pcodelval;
 
 
-int pcode_parse (void);
+int pcodeparse (void);
 
 
 
@@ -594,7 +604,7 @@ void free (void *); /* INFRINGES ON USER NAME SPACE */
 
 #if (! defined yyoverflow \
      && (! defined __cplusplus \
-         || (defined YYSTYPE_IS_TRIVIAL && YYSTYPE_IS_TRIVIAL)))
+         || (defined PCODESTYPE_IS_TRIVIAL && PCODESTYPE_IS_TRIVIAL)))
 
 /* A type that is properly aligned for any stack member.  */
 union yyalloc
@@ -715,30 +725,30 @@ static const yytype_int8 yytranslate[] =
       68,    69,    70,    71,    72,    73,    74
 };
 
-#if YYDEBUG
+#if PCODEDEBUG
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,   102,   102,   104,   105,   106,   107,   109,   110,   111,
-     112,   113,   114,   115,   116,   117,   118,   119,   120,   121,
-     122,   123,   124,   125,   126,   127,   129,   130,   131,   132,
-     133,   134,   135,   136,   137,   138,   139,   140,   141,   142,
-     143,   144,   145,   146,   147,   148,   149,   150,   151,   152,
-     153,   154,   155,   156,   157,   158,   159,   160,   161,   162,
-     163,   164,   165,   166,   167,   168,   169,   170,   171,   172,
-     173,   174,   175,   176,   177,   178,   179,   180,   181,   182,
-     183,   184,   185,   186,   187,   188,   189,   190,   191,   193,
-     194,   195,   196,   198,   199,   200,   201,   202,   203,   204,
-     205,   207,   208,   209,   211,   212,   213,   214,   215,   217,
-     218,   220,   221,   223,   224,   225,   226,   227,   229,   230,
-     231
+       0,   104,   104,   106,   107,   108,   109,   111,   112,   113,
+     114,   115,   116,   117,   118,   119,   120,   121,   122,   123,
+     124,   125,   126,   127,   128,   129,   131,   132,   133,   134,
+     135,   136,   137,   138,   139,   140,   141,   142,   143,   144,
+     145,   146,   147,   148,   149,   150,   151,   152,   153,   154,
+     155,   156,   157,   158,   159,   160,   161,   162,   163,   164,
+     165,   166,   167,   168,   169,   170,   171,   172,   173,   174,
+     175,   176,   177,   178,   179,   180,   181,   182,   183,   184,
+     185,   186,   187,   188,   189,   190,   191,   192,   193,   195,
+     196,   197,   198,   200,   201,   202,   203,   204,   205,   206,
+     207,   209,   210,   211,   213,   214,   215,   216,   217,   219,
+     220,   222,   223,   225,   226,   227,   228,   229,   231,   232,
+     233
 };
 #endif
 
 /** Accessing symbol of state STATE.  */
 #define YY_ACCESSING_SYMBOL(State) YY_CAST (yysymbol_kind_t, yystos[State])
 
-#if YYDEBUG || 0
+#if PCODEDEBUG || 0
 /* The user-facing name of the symbol whose (internal) number is
    YYSYMBOL.  No bounds checking.  */
 static const char *yysymbol_name (yysymbol_kind_t yysymbol) YY_ATTRIBUTE_UNUSED;
@@ -1350,7 +1360,7 @@ static const yytype_int8 yyr2[] =
 enum { YYENOMEM = -2 };
 
 #define yyerrok         (yyerrstatus = 0)
-#define yyclearin       (yychar = YYEMPTY)
+#define yyclearin       (yychar = PCODEEMPTY)
 
 #define YYACCEPT        goto yyacceptlab
 #define YYABORT         goto yyabortlab
@@ -1362,7 +1372,7 @@ enum { YYENOMEM = -2 };
 
 #define YYBACKUP(Token, Value)                                    \
   do                                                              \
-    if (yychar == YYEMPTY)                                        \
+    if (yychar == PCODEEMPTY)                                        \
       {                                                           \
         yychar = (Token);                                         \
         yylval = (Value);                                         \
@@ -1378,12 +1388,12 @@ enum { YYENOMEM = -2 };
   while (0)
 
 /* Backward compatibility with an undocumented macro.
-   Use YYerror or YYUNDEF. */
-#define YYERRCODE YYUNDEF
+   Use PCODEerror or PCODEUNDEF. */
+#define YYERRCODE PCODEUNDEF
 
 
 /* Enable debugging if requested.  */
-#if YYDEBUG
+#if PCODEDEBUG
 
 # ifndef YYFPRINTF
 #  include <stdio.h> /* INFRINGES ON USER NAME SPACE */
@@ -1501,12 +1511,12 @@ do {                                    \
 /* Nonzero means print parse trace.  It is left uninitialized so that
    multiple parsers can coexist.  */
 int yydebug;
-#else /* !YYDEBUG */
+#else /* !PCODEDEBUG */
 # define YYDPRINTF(Args) ((void) 0)
 # define YY_SYMBOL_PRINT(Title, Kind, Value, Location)
 # define YY_STACK_PRINT(Bottom, Top)
 # define YY_REDUCE_PRINT(Rule)
-#endif /* !YYDEBUG */
+#endif /* !PCODEDEBUG */
 
 
 /* YYINITDEPTH -- initial size of the parser's stacks.  */
@@ -1547,69 +1557,69 @@ yydestruct (const char *yymsg,
   switch (yykind)
     {
     case YYSYMBOL_INTEGER: /* INTEGER  */
-#line 92 "pcodeparse.y"
+#line 94 "pcodeparse.y"
             { delete ((*yyvaluep).i); }
-#line 1553 "pcodeparse.tab.cc"
+#line 1563 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_STRING: /* STRING  */
-#line 93 "pcodeparse.y"
+#line 95 "pcodeparse.y"
             { delete ((*yyvaluep).str); }
-#line 1559 "pcodeparse.tab.cc"
+#line 1569 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_rtlmid: /* rtlmid  */
-#line 95 "pcodeparse.y"
+#line 97 "pcodeparse.y"
             { delete ((*yyvaluep).sem); }
-#line 1565 "pcodeparse.tab.cc"
+#line 1575 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_statement: /* statement  */
-#line 96 "pcodeparse.y"
+#line 98 "pcodeparse.y"
             { if (((*yyvaluep).stmt) != (vector<OpTpl *> *)0) { for(int4 i=0;i<((*yyvaluep).stmt)->size();++i) delete (*((*yyvaluep).stmt))[i]; delete ((*yyvaluep).stmt);} }
-#line 1571 "pcodeparse.tab.cc"
+#line 1581 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_expr: /* expr  */
-#line 97 "pcodeparse.y"
+#line 99 "pcodeparse.y"
             { delete ((*yyvaluep).tree); }
-#line 1577 "pcodeparse.tab.cc"
+#line 1587 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_sizedstar: /* sizedstar  */
-#line 99 "pcodeparse.y"
+#line 101 "pcodeparse.y"
             { delete ((*yyvaluep).starqual); }
-#line 1583 "pcodeparse.tab.cc"
+#line 1593 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_jumpdest: /* jumpdest  */
-#line 98 "pcodeparse.y"
+#line 100 "pcodeparse.y"
             { if (((*yyvaluep).varnode) != (VarnodeTpl *)0) delete ((*yyvaluep).varnode); }
-#line 1589 "pcodeparse.tab.cc"
+#line 1599 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_varnode: /* varnode  */
-#line 98 "pcodeparse.y"
+#line 100 "pcodeparse.y"
             { if (((*yyvaluep).varnode) != (VarnodeTpl *)0) delete ((*yyvaluep).varnode); }
-#line 1595 "pcodeparse.tab.cc"
+#line 1605 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_integervarnode: /* integervarnode  */
-#line 98 "pcodeparse.y"
+#line 100 "pcodeparse.y"
             { if (((*yyvaluep).varnode) != (VarnodeTpl *)0) delete ((*yyvaluep).varnode); }
-#line 1601 "pcodeparse.tab.cc"
+#line 1611 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_lhsvarnode: /* lhsvarnode  */
-#line 98 "pcodeparse.y"
+#line 100 "pcodeparse.y"
             { if (((*yyvaluep).varnode) != (VarnodeTpl *)0) delete ((*yyvaluep).varnode); }
-#line 1607 "pcodeparse.tab.cc"
+#line 1617 "pcodeparse.tab.cc"
         break;
 
     case YYSYMBOL_paramlist: /* paramlist  */
-#line 94 "pcodeparse.y"
+#line 96 "pcodeparse.y"
             { for(int4 i=0;i<((*yyvaluep).param)->size();++i) delete (*((*yyvaluep).param))[i]; delete ((*yyvaluep).param); }
-#line 1613 "pcodeparse.tab.cc"
+#line 1623 "pcodeparse.tab.cc"
         break;
 
       default:
@@ -1676,7 +1686,7 @@ yyparse (void)
 
   YYDPRINTF ((stderr, "Starting parse\n"));
 
-  yychar = YYEMPTY; /* Cause a token to be read.  */
+  yychar = PCODEEMPTY; /* Cause a token to be read.  */
 
   goto yysetstate;
 
@@ -1786,25 +1796,25 @@ yybackup:
   /* Not known => get a lookahead token if don't already have one.  */
 
   /* YYCHAR is either empty, or end-of-input, or a valid lookahead.  */
-  if (yychar == YYEMPTY)
+  if (yychar == PCODEEMPTY)
     {
       YYDPRINTF ((stderr, "Reading a token\n"));
       yychar = yylex ();
     }
 
-  if (yychar <= YYEOF)
+  if (yychar <= PCODEEOF)
     {
-      yychar = YYEOF;
+      yychar = PCODEEOF;
       yytoken = YYSYMBOL_YYEOF;
       YYDPRINTF ((stderr, "Now at end of input.\n"));
     }
-  else if (yychar == YYerror)
+  else if (yychar == PCODEerror)
     {
       /* The scanner already issued an error message, process directly
          to error recovery.  But do not keep the error token as
          lookahead, it is too special and may lead us to an endless
          loop in error recovery. */
-      yychar = YYUNDEF;
+      yychar = PCODEUNDEF;
       yytoken = YYSYMBOL_YYerror;
       goto yyerrlab1;
     }
@@ -1841,7 +1851,7 @@ yybackup:
   YY_IGNORE_MAYBE_UNINITIALIZED_END
 
   /* Discard the shifted token.  */
-  yychar = YYEMPTY;
+  yychar = PCODEEMPTY;
   goto yynewstate;
 
 
@@ -1877,721 +1887,721 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* rtl: rtlmid ENDOFSTREAM  */
-#line 102 "pcodeparse.y"
+#line 104 "pcodeparse.y"
                                         { pcode->setResult((yyvsp[-1].sem)); }
-#line 1883 "pcodeparse.tab.cc"
+#line 1893 "pcodeparse.tab.cc"
     break;
 
   case 3: /* rtlmid: %empty  */
-#line 104 "pcodeparse.y"
+#line 106 "pcodeparse.y"
                                         { (yyval.sem) = new ConstructTpl(); }
-#line 1889 "pcodeparse.tab.cc"
+#line 1899 "pcodeparse.tab.cc"
     break;
 
   case 4: /* rtlmid: rtlmid statement  */
-#line 105 "pcodeparse.y"
+#line 107 "pcodeparse.y"
                                         { (yyval.sem) = (yyvsp[-1].sem); if (!(yyval.sem)->addOpList(*(yyvsp[0].stmt))) { delete (yyvsp[0].stmt); yyerror("Multiple delayslot declarations"); YYERROR; } delete (yyvsp[0].stmt); }
-#line 1895 "pcodeparse.tab.cc"
+#line 1905 "pcodeparse.tab.cc"
     break;
 
   case 5: /* rtlmid: rtlmid LOCAL_KEY STRING ';'  */
-#line 106 "pcodeparse.y"
+#line 108 "pcodeparse.y"
                                 { (yyval.sem) = (yyvsp[-3].sem); pcode->newLocalDefinition((yyvsp[-1].str)); }
-#line 1901 "pcodeparse.tab.cc"
+#line 1911 "pcodeparse.tab.cc"
     break;
 
   case 6: /* rtlmid: rtlmid LOCAL_KEY STRING ':' INTEGER ';'  */
-#line 107 "pcodeparse.y"
+#line 109 "pcodeparse.y"
                                             { (yyval.sem) = (yyvsp[-5].sem); pcode->newLocalDefinition((yyvsp[-3].str),*(yyvsp[-1].i)); delete (yyvsp[-1].i); }
-#line 1907 "pcodeparse.tab.cc"
+#line 1917 "pcodeparse.tab.cc"
     break;
 
   case 7: /* statement: lhsvarnode '=' expr ';'  */
-#line 109 "pcodeparse.y"
+#line 111 "pcodeparse.y"
                                         { (yyvsp[-1].tree)->setOutput((yyvsp[-3].varnode)); (yyval.stmt) = ExprTree::toVector((yyvsp[-1].tree)); }
-#line 1913 "pcodeparse.tab.cc"
+#line 1923 "pcodeparse.tab.cc"
     break;
 
   case 8: /* statement: LOCAL_KEY STRING '=' expr ';'  */
-#line 110 "pcodeparse.y"
+#line 112 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->newOutput(true,(yyvsp[-1].tree),(yyvsp[-3].str)); }
-#line 1919 "pcodeparse.tab.cc"
+#line 1929 "pcodeparse.tab.cc"
     break;
 
   case 9: /* statement: STRING '=' expr ';'  */
-#line 111 "pcodeparse.y"
+#line 113 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->newOutput(false,(yyvsp[-1].tree),(yyvsp[-3].str)); }
-#line 1925 "pcodeparse.tab.cc"
+#line 1935 "pcodeparse.tab.cc"
     break;
 
   case 10: /* statement: LOCAL_KEY STRING ':' INTEGER '=' expr ';'  */
-#line 112 "pcodeparse.y"
+#line 114 "pcodeparse.y"
                                                 { (yyval.stmt) = pcode->newOutput(true,(yyvsp[-1].tree),(yyvsp[-5].str),*(yyvsp[-3].i)); delete (yyvsp[-3].i); }
-#line 1931 "pcodeparse.tab.cc"
+#line 1941 "pcodeparse.tab.cc"
     break;
 
   case 11: /* statement: STRING ':' INTEGER '=' expr ';'  */
-#line 113 "pcodeparse.y"
+#line 115 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->newOutput(true,(yyvsp[-1].tree),(yyvsp[-5].str),*(yyvsp[-3].i)); delete (yyvsp[-3].i); }
-#line 1937 "pcodeparse.tab.cc"
+#line 1947 "pcodeparse.tab.cc"
     break;
 
   case 12: /* statement: LOCAL_KEY specificsymbol '='  */
-#line 114 "pcodeparse.y"
+#line 116 "pcodeparse.y"
                                  { (yyval.stmt) = (vector<OpTpl *> *)0; string errmsg = "Redefinition of symbol: "+(yyvsp[-1].specsym)->getName(); yyerror(errmsg.c_str()); YYERROR; }
-#line 1943 "pcodeparse.tab.cc"
+#line 1953 "pcodeparse.tab.cc"
     break;
 
   case 13: /* statement: sizedstar expr '=' expr ';'  */
-#line 115 "pcodeparse.y"
+#line 117 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->createStore((yyvsp[-4].starqual),(yyvsp[-3].tree),(yyvsp[-1].tree)); }
-#line 1949 "pcodeparse.tab.cc"
+#line 1959 "pcodeparse.tab.cc"
     break;
 
   case 14: /* statement: USEROPSYM '(' paramlist ')' ';'  */
-#line 116 "pcodeparse.y"
+#line 118 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->createUserOpNoOut((yyvsp[-4].useropsym),(yyvsp[-2].param)); }
-#line 1955 "pcodeparse.tab.cc"
+#line 1965 "pcodeparse.tab.cc"
     break;
 
   case 15: /* statement: lhsvarnode '[' INTEGER ',' INTEGER ']' '=' expr ';'  */
-#line 117 "pcodeparse.y"
+#line 119 "pcodeparse.y"
                                                         { (yyval.stmt) = pcode->assignBitRange((yyvsp[-8].varnode),(uint4)*(yyvsp[-6].i),(uint4)*(yyvsp[-4].i),(yyvsp[-1].tree)); delete (yyvsp[-6].i), delete (yyvsp[-4].i); }
-#line 1961 "pcodeparse.tab.cc"
+#line 1971 "pcodeparse.tab.cc"
     break;
 
   case 16: /* statement: varnode ':' INTEGER '='  */
-#line 118 "pcodeparse.y"
+#line 120 "pcodeparse.y"
                                         { (yyval.stmt) = (vector<OpTpl *> *)0; delete (yyvsp[-3].varnode); delete (yyvsp[-1].i); yyerror("Illegal truncation on left-hand side of assignment"); YYERROR; }
-#line 1967 "pcodeparse.tab.cc"
+#line 1977 "pcodeparse.tab.cc"
     break;
 
   case 17: /* statement: varnode '(' INTEGER ')'  */
-#line 119 "pcodeparse.y"
+#line 121 "pcodeparse.y"
                                         { (yyval.stmt) = (vector<OpTpl *> *)0; delete (yyvsp[-3].varnode); delete (yyvsp[-1].i); yyerror("Illegal subpiece on left-hand side of assignment"); YYERROR; }
-#line 1973 "pcodeparse.tab.cc"
+#line 1983 "pcodeparse.tab.cc"
     break;
 
   case 18: /* statement: GOTO_KEY jumpdest ';'  */
-#line 120 "pcodeparse.y"
+#line 122 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->createOpNoOut(CPUI_BRANCH,new ExprTree((yyvsp[-1].varnode))); }
-#line 1979 "pcodeparse.tab.cc"
+#line 1989 "pcodeparse.tab.cc"
     break;
 
   case 19: /* statement: IF_KEY expr GOTO_KEY jumpdest ';'  */
-#line 121 "pcodeparse.y"
+#line 123 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->createOpNoOut(CPUI_CBRANCH,new ExprTree((yyvsp[-1].varnode)),(yyvsp[-3].tree)); }
-#line 1985 "pcodeparse.tab.cc"
+#line 1995 "pcodeparse.tab.cc"
     break;
 
   case 20: /* statement: GOTO_KEY '[' expr ']' ';'  */
-#line 122 "pcodeparse.y"
+#line 124 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->createOpNoOut(CPUI_BRANCHIND,(yyvsp[-2].tree)); }
-#line 1991 "pcodeparse.tab.cc"
+#line 2001 "pcodeparse.tab.cc"
     break;
 
   case 21: /* statement: CALL_KEY jumpdest ';'  */
-#line 123 "pcodeparse.y"
+#line 125 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->createOpNoOut(CPUI_CALL,new ExprTree((yyvsp[-1].varnode))); }
-#line 1997 "pcodeparse.tab.cc"
+#line 2007 "pcodeparse.tab.cc"
     break;
 
   case 22: /* statement: CALL_KEY '[' expr ']' ';'  */
-#line 124 "pcodeparse.y"
+#line 126 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->createOpNoOut(CPUI_CALLIND,(yyvsp[-2].tree)); }
-#line 2003 "pcodeparse.tab.cc"
+#line 2013 "pcodeparse.tab.cc"
     break;
 
   case 23: /* statement: RETURN_KEY ';'  */
-#line 125 "pcodeparse.y"
+#line 127 "pcodeparse.y"
                                         { (yyval.stmt) = (vector<OpTpl *> *)0; yyerror("Must specify an indirect parameter for return"); YYERROR; }
-#line 2009 "pcodeparse.tab.cc"
+#line 2019 "pcodeparse.tab.cc"
     break;
 
   case 24: /* statement: RETURN_KEY '[' expr ']' ';'  */
-#line 126 "pcodeparse.y"
+#line 128 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->createOpNoOut(CPUI_RETURN,(yyvsp[-2].tree)); }
-#line 2015 "pcodeparse.tab.cc"
+#line 2025 "pcodeparse.tab.cc"
     break;
 
   case 25: /* statement: label  */
-#line 127 "pcodeparse.y"
+#line 129 "pcodeparse.y"
                                         { (yyval.stmt) = pcode->placeLabel( (yyvsp[0].labelsym) ); }
-#line 2021 "pcodeparse.tab.cc"
+#line 2031 "pcodeparse.tab.cc"
     break;
 
   case 26: /* expr: varnode  */
-#line 129 "pcodeparse.y"
+#line 131 "pcodeparse.y"
               { (yyval.tree) = new ExprTree((yyvsp[0].varnode)); }
-#line 2027 "pcodeparse.tab.cc"
+#line 2037 "pcodeparse.tab.cc"
     break;
 
   case 27: /* expr: sizedstar expr  */
-#line 130 "pcodeparse.y"
+#line 132 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createLoad((yyvsp[-1].starqual),(yyvsp[0].tree)); }
-#line 2033 "pcodeparse.tab.cc"
+#line 2043 "pcodeparse.tab.cc"
     break;
 
   case 28: /* expr: '(' expr ')'  */
-#line 131 "pcodeparse.y"
+#line 133 "pcodeparse.y"
                                 { (yyval.tree) = (yyvsp[-1].tree); }
-#line 2039 "pcodeparse.tab.cc"
+#line 2049 "pcodeparse.tab.cc"
     break;
 
   case 29: /* expr: expr '+' expr  */
-#line 132 "pcodeparse.y"
+#line 134 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_ADD,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2045 "pcodeparse.tab.cc"
+#line 2055 "pcodeparse.tab.cc"
     break;
 
   case 30: /* expr: expr '-' expr  */
-#line 133 "pcodeparse.y"
+#line 135 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SUB,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2051 "pcodeparse.tab.cc"
+#line 2061 "pcodeparse.tab.cc"
     break;
 
   case 31: /* expr: expr OP_EQUAL expr  */
-#line 134 "pcodeparse.y"
+#line 136 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_EQUAL,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2057 "pcodeparse.tab.cc"
+#line 2067 "pcodeparse.tab.cc"
     break;
 
   case 32: /* expr: expr OP_NOTEQUAL expr  */
-#line 135 "pcodeparse.y"
+#line 137 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_NOTEQUAL,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2063 "pcodeparse.tab.cc"
+#line 2073 "pcodeparse.tab.cc"
     break;
 
   case 33: /* expr: expr '<' expr  */
-#line 136 "pcodeparse.y"
+#line 138 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_LESS,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2069 "pcodeparse.tab.cc"
+#line 2079 "pcodeparse.tab.cc"
     break;
 
   case 34: /* expr: expr OP_GREATEQUAL expr  */
-#line 137 "pcodeparse.y"
+#line 139 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_LESSEQUAL,(yyvsp[0].tree),(yyvsp[-2].tree)); }
-#line 2075 "pcodeparse.tab.cc"
+#line 2085 "pcodeparse.tab.cc"
     break;
 
   case 35: /* expr: expr OP_LESSEQUAL expr  */
-#line 138 "pcodeparse.y"
+#line 140 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_LESSEQUAL,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2081 "pcodeparse.tab.cc"
+#line 2091 "pcodeparse.tab.cc"
     break;
 
   case 36: /* expr: expr '>' expr  */
-#line 139 "pcodeparse.y"
+#line 141 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_LESS,(yyvsp[0].tree),(yyvsp[-2].tree)); }
-#line 2087 "pcodeparse.tab.cc"
+#line 2097 "pcodeparse.tab.cc"
     break;
 
   case 37: /* expr: expr OP_SLESS expr  */
-#line 140 "pcodeparse.y"
+#line 142 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SLESS,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2093 "pcodeparse.tab.cc"
+#line 2103 "pcodeparse.tab.cc"
     break;
 
   case 38: /* expr: expr OP_SGREATEQUAL expr  */
-#line 141 "pcodeparse.y"
+#line 143 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SLESSEQUAL,(yyvsp[0].tree),(yyvsp[-2].tree)); }
-#line 2099 "pcodeparse.tab.cc"
+#line 2109 "pcodeparse.tab.cc"
     break;
 
   case 39: /* expr: expr OP_SLESSEQUAL expr  */
-#line 142 "pcodeparse.y"
+#line 144 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SLESSEQUAL,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2105 "pcodeparse.tab.cc"
+#line 2115 "pcodeparse.tab.cc"
     break;
 
   case 40: /* expr: expr OP_SGREAT expr  */
-#line 143 "pcodeparse.y"
+#line 145 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SLESS,(yyvsp[0].tree),(yyvsp[-2].tree)); }
-#line 2111 "pcodeparse.tab.cc"
+#line 2121 "pcodeparse.tab.cc"
     break;
 
   case 41: /* expr: '-' expr  */
-#line 144 "pcodeparse.y"
+#line 146 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_2COMP,(yyvsp[0].tree)); }
-#line 2117 "pcodeparse.tab.cc"
+#line 2127 "pcodeparse.tab.cc"
     break;
 
   case 42: /* expr: '~' expr  */
-#line 145 "pcodeparse.y"
+#line 147 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_NEGATE,(yyvsp[0].tree)); }
-#line 2123 "pcodeparse.tab.cc"
+#line 2133 "pcodeparse.tab.cc"
     break;
 
   case 43: /* expr: expr '^' expr  */
-#line 146 "pcodeparse.y"
+#line 148 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_XOR,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2129 "pcodeparse.tab.cc"
+#line 2139 "pcodeparse.tab.cc"
     break;
 
   case 44: /* expr: expr '&' expr  */
-#line 147 "pcodeparse.y"
+#line 149 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_AND,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2135 "pcodeparse.tab.cc"
+#line 2145 "pcodeparse.tab.cc"
     break;
 
   case 45: /* expr: expr '|' expr  */
-#line 148 "pcodeparse.y"
+#line 150 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_OR,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2141 "pcodeparse.tab.cc"
+#line 2151 "pcodeparse.tab.cc"
     break;
 
   case 46: /* expr: expr OP_LEFT expr  */
-#line 149 "pcodeparse.y"
+#line 151 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_LEFT,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2147 "pcodeparse.tab.cc"
+#line 2157 "pcodeparse.tab.cc"
     break;
 
   case 47: /* expr: expr OP_RIGHT expr  */
-#line 150 "pcodeparse.y"
+#line 152 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_RIGHT,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2153 "pcodeparse.tab.cc"
+#line 2163 "pcodeparse.tab.cc"
     break;
 
   case 48: /* expr: expr OP_SRIGHT expr  */
-#line 151 "pcodeparse.y"
+#line 153 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SRIGHT,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2159 "pcodeparse.tab.cc"
+#line 2169 "pcodeparse.tab.cc"
     break;
 
   case 49: /* expr: expr '*' expr  */
-#line 152 "pcodeparse.y"
+#line 154 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_MULT,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2165 "pcodeparse.tab.cc"
+#line 2175 "pcodeparse.tab.cc"
     break;
 
   case 50: /* expr: expr '/' expr  */
-#line 153 "pcodeparse.y"
+#line 155 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_DIV,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2171 "pcodeparse.tab.cc"
+#line 2181 "pcodeparse.tab.cc"
     break;
 
   case 51: /* expr: expr OP_SDIV expr  */
-#line 154 "pcodeparse.y"
+#line 156 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SDIV,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2177 "pcodeparse.tab.cc"
+#line 2187 "pcodeparse.tab.cc"
     break;
 
   case 52: /* expr: expr '%' expr  */
-#line 155 "pcodeparse.y"
+#line 157 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_REM,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2183 "pcodeparse.tab.cc"
+#line 2193 "pcodeparse.tab.cc"
     break;
 
   case 53: /* expr: expr OP_SREM expr  */
-#line 156 "pcodeparse.y"
+#line 158 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SREM,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2189 "pcodeparse.tab.cc"
+#line 2199 "pcodeparse.tab.cc"
     break;
 
   case 54: /* expr: '!' expr  */
-#line 157 "pcodeparse.y"
+#line 159 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_BOOL_NEGATE,(yyvsp[0].tree)); }
-#line 2195 "pcodeparse.tab.cc"
+#line 2205 "pcodeparse.tab.cc"
     break;
 
   case 55: /* expr: expr OP_BOOL_XOR expr  */
-#line 158 "pcodeparse.y"
+#line 160 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_BOOL_XOR,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2201 "pcodeparse.tab.cc"
+#line 2211 "pcodeparse.tab.cc"
     break;
 
   case 56: /* expr: expr OP_BOOL_AND expr  */
-#line 159 "pcodeparse.y"
+#line 161 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_BOOL_AND,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2207 "pcodeparse.tab.cc"
+#line 2217 "pcodeparse.tab.cc"
     break;
 
   case 57: /* expr: expr OP_BOOL_OR expr  */
-#line 160 "pcodeparse.y"
+#line 162 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_BOOL_OR,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2213 "pcodeparse.tab.cc"
+#line 2223 "pcodeparse.tab.cc"
     break;
 
   case 58: /* expr: expr OP_FEQUAL expr  */
-#line 161 "pcodeparse.y"
+#line 163 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_EQUAL,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2219 "pcodeparse.tab.cc"
+#line 2229 "pcodeparse.tab.cc"
     break;
 
   case 59: /* expr: expr OP_FNOTEQUAL expr  */
-#line 162 "pcodeparse.y"
+#line 164 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_NOTEQUAL,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2225 "pcodeparse.tab.cc"
+#line 2235 "pcodeparse.tab.cc"
     break;
 
   case 60: /* expr: expr OP_FLESS expr  */
-#line 163 "pcodeparse.y"
+#line 165 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_LESS,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2231 "pcodeparse.tab.cc"
+#line 2241 "pcodeparse.tab.cc"
     break;
 
   case 61: /* expr: expr OP_FGREAT expr  */
-#line 164 "pcodeparse.y"
+#line 166 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_LESS,(yyvsp[0].tree),(yyvsp[-2].tree)); }
-#line 2237 "pcodeparse.tab.cc"
+#line 2247 "pcodeparse.tab.cc"
     break;
 
   case 62: /* expr: expr OP_FLESSEQUAL expr  */
-#line 165 "pcodeparse.y"
+#line 167 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_LESSEQUAL,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2243 "pcodeparse.tab.cc"
+#line 2253 "pcodeparse.tab.cc"
     break;
 
   case 63: /* expr: expr OP_FGREATEQUAL expr  */
-#line 166 "pcodeparse.y"
+#line 168 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_LESSEQUAL,(yyvsp[0].tree),(yyvsp[-2].tree)); }
-#line 2249 "pcodeparse.tab.cc"
+#line 2259 "pcodeparse.tab.cc"
     break;
 
   case 64: /* expr: expr OP_FADD expr  */
-#line 167 "pcodeparse.y"
+#line 169 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_ADD,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2255 "pcodeparse.tab.cc"
+#line 2265 "pcodeparse.tab.cc"
     break;
 
   case 65: /* expr: expr OP_FSUB expr  */
-#line 168 "pcodeparse.y"
+#line 170 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_SUB,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2261 "pcodeparse.tab.cc"
+#line 2271 "pcodeparse.tab.cc"
     break;
 
   case 66: /* expr: expr OP_FMULT expr  */
-#line 169 "pcodeparse.y"
+#line 171 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_MULT,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2267 "pcodeparse.tab.cc"
+#line 2277 "pcodeparse.tab.cc"
     break;
 
   case 67: /* expr: expr OP_FDIV expr  */
-#line 170 "pcodeparse.y"
+#line 172 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_DIV,(yyvsp[-2].tree),(yyvsp[0].tree)); }
-#line 2273 "pcodeparse.tab.cc"
+#line 2283 "pcodeparse.tab.cc"
     break;
 
   case 68: /* expr: OP_FSUB expr  */
-#line 171 "pcodeparse.y"
+#line 173 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_NEG,(yyvsp[0].tree)); }
-#line 2279 "pcodeparse.tab.cc"
+#line 2289 "pcodeparse.tab.cc"
     break;
 
   case 69: /* expr: OP_ABS '(' expr ')'  */
-#line 172 "pcodeparse.y"
+#line 174 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_ABS,(yyvsp[-1].tree)); }
-#line 2285 "pcodeparse.tab.cc"
+#line 2295 "pcodeparse.tab.cc"
     break;
 
   case 70: /* expr: OP_SQRT '(' expr ')'  */
-#line 173 "pcodeparse.y"
+#line 175 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_SQRT,(yyvsp[-1].tree)); }
-#line 2291 "pcodeparse.tab.cc"
+#line 2301 "pcodeparse.tab.cc"
     break;
 
   case 71: /* expr: OP_SEXT '(' expr ')'  */
-#line 174 "pcodeparse.y"
+#line 176 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_SEXT,(yyvsp[-1].tree)); }
-#line 2297 "pcodeparse.tab.cc"
+#line 2307 "pcodeparse.tab.cc"
     break;
 
   case 72: /* expr: OP_ZEXT '(' expr ')'  */
-#line 175 "pcodeparse.y"
+#line 177 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_INT_ZEXT,(yyvsp[-1].tree)); }
-#line 2303 "pcodeparse.tab.cc"
+#line 2313 "pcodeparse.tab.cc"
     break;
 
   case 73: /* expr: OP_CARRY '(' expr ',' expr ')'  */
-#line 176 "pcodeparse.y"
+#line 178 "pcodeparse.y"
                                    { (yyval.tree) = pcode->createOp(CPUI_INT_CARRY,(yyvsp[-3].tree),(yyvsp[-1].tree)); }
-#line 2309 "pcodeparse.tab.cc"
+#line 2319 "pcodeparse.tab.cc"
     break;
 
   case 74: /* expr: OP_SCARRY '(' expr ',' expr ')'  */
-#line 177 "pcodeparse.y"
+#line 179 "pcodeparse.y"
                                     { (yyval.tree) = pcode->createOp(CPUI_INT_SCARRY,(yyvsp[-3].tree),(yyvsp[-1].tree)); }
-#line 2315 "pcodeparse.tab.cc"
+#line 2325 "pcodeparse.tab.cc"
     break;
 
   case 75: /* expr: OP_SBORROW '(' expr ',' expr ')'  */
-#line 178 "pcodeparse.y"
+#line 180 "pcodeparse.y"
                                      { (yyval.tree) = pcode->createOp(CPUI_INT_SBORROW,(yyvsp[-3].tree),(yyvsp[-1].tree)); }
-#line 2321 "pcodeparse.tab.cc"
+#line 2331 "pcodeparse.tab.cc"
     break;
 
   case 76: /* expr: OP_FLOAT2FLOAT '(' expr ')'  */
-#line 179 "pcodeparse.y"
+#line 181 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_FLOAT2FLOAT,(yyvsp[-1].tree)); }
-#line 2327 "pcodeparse.tab.cc"
+#line 2337 "pcodeparse.tab.cc"
     break;
 
   case 77: /* expr: OP_INT2FLOAT '(' expr ')'  */
-#line 180 "pcodeparse.y"
+#line 182 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_INT2FLOAT,(yyvsp[-1].tree)); }
-#line 2333 "pcodeparse.tab.cc"
+#line 2343 "pcodeparse.tab.cc"
     break;
 
   case 78: /* expr: OP_NAN '(' expr ')'  */
-#line 181 "pcodeparse.y"
+#line 183 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_NAN,(yyvsp[-1].tree)); }
-#line 2339 "pcodeparse.tab.cc"
+#line 2349 "pcodeparse.tab.cc"
     break;
 
   case 79: /* expr: OP_TRUNC '(' expr ')'  */
-#line 182 "pcodeparse.y"
+#line 184 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_TRUNC,(yyvsp[-1].tree)); }
-#line 2345 "pcodeparse.tab.cc"
+#line 2355 "pcodeparse.tab.cc"
     break;
 
   case 80: /* expr: OP_CEIL '(' expr ')'  */
-#line 183 "pcodeparse.y"
+#line 185 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_CEIL,(yyvsp[-1].tree)); }
-#line 2351 "pcodeparse.tab.cc"
+#line 2361 "pcodeparse.tab.cc"
     break;
 
   case 81: /* expr: OP_FLOOR '(' expr ')'  */
-#line 184 "pcodeparse.y"
+#line 186 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_FLOOR,(yyvsp[-1].tree)); }
-#line 2357 "pcodeparse.tab.cc"
+#line 2367 "pcodeparse.tab.cc"
     break;
 
   case 82: /* expr: OP_ROUND '(' expr ')'  */
-#line 185 "pcodeparse.y"
+#line 187 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createOp(CPUI_FLOAT_ROUND,(yyvsp[-1].tree)); }
-#line 2363 "pcodeparse.tab.cc"
+#line 2373 "pcodeparse.tab.cc"
     break;
 
   case 83: /* expr: OP_NEW '(' expr ')'  */
-#line 186 "pcodeparse.y"
+#line 188 "pcodeparse.y"
                             { (yyval.tree) = pcode->createOp(CPUI_NEW,(yyvsp[-1].tree)); }
-#line 2369 "pcodeparse.tab.cc"
+#line 2379 "pcodeparse.tab.cc"
     break;
 
   case 84: /* expr: OP_NEW '(' expr ',' expr ')'  */
-#line 187 "pcodeparse.y"
+#line 189 "pcodeparse.y"
                                  { (yyval.tree) = pcode->createOp(CPUI_NEW,(yyvsp[-3].tree),(yyvsp[-1].tree)); }
-#line 2375 "pcodeparse.tab.cc"
+#line 2385 "pcodeparse.tab.cc"
     break;
 
   case 85: /* expr: specificsymbol '(' integervarnode ')'  */
-#line 188 "pcodeparse.y"
+#line 190 "pcodeparse.y"
                                           { (yyval.tree) = pcode->createOp(CPUI_SUBPIECE,new ExprTree((yyvsp[-3].specsym)->getVarnode()),new ExprTree((yyvsp[-1].varnode))); }
-#line 2381 "pcodeparse.tab.cc"
+#line 2391 "pcodeparse.tab.cc"
     break;
 
   case 86: /* expr: specificsymbol ':' INTEGER  */
-#line 189 "pcodeparse.y"
+#line 191 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createBitRange((yyvsp[-2].specsym),0,(uint4)(*(yyvsp[0].i) * 8)); delete (yyvsp[0].i); }
-#line 2387 "pcodeparse.tab.cc"
+#line 2397 "pcodeparse.tab.cc"
     break;
 
   case 87: /* expr: specificsymbol '[' INTEGER ',' INTEGER ']'  */
-#line 190 "pcodeparse.y"
+#line 192 "pcodeparse.y"
                                                { (yyval.tree) = pcode->createBitRange((yyvsp[-5].specsym),(uint4)*(yyvsp[-3].i),(uint4)*(yyvsp[-1].i)); delete (yyvsp[-3].i), delete (yyvsp[-1].i); }
-#line 2393 "pcodeparse.tab.cc"
+#line 2403 "pcodeparse.tab.cc"
     break;
 
   case 88: /* expr: USEROPSYM '(' paramlist ')'  */
-#line 191 "pcodeparse.y"
+#line 193 "pcodeparse.y"
                                 { (yyval.tree) = pcode->createUserOp((yyvsp[-3].useropsym),(yyvsp[-1].param)); }
-#line 2399 "pcodeparse.tab.cc"
+#line 2409 "pcodeparse.tab.cc"
     break;
 
   case 89: /* sizedstar: '*' '[' SPACESYM ']' ':' INTEGER  */
-#line 193 "pcodeparse.y"
+#line 195 "pcodeparse.y"
                                             { (yyval.starqual) = new StarQuality; (yyval.starqual)->size = *(yyvsp[0].i); delete (yyvsp[0].i); (yyval.starqual)->id=ConstTpl((yyvsp[-3].spacesym)->getSpace()); }
-#line 2405 "pcodeparse.tab.cc"
+#line 2415 "pcodeparse.tab.cc"
     break;
 
   case 90: /* sizedstar: '*' '[' SPACESYM ']'  */
-#line 194 "pcodeparse.y"
+#line 196 "pcodeparse.y"
                                 { (yyval.starqual) = new StarQuality; (yyval.starqual)->size = 0; (yyval.starqual)->id=ConstTpl((yyvsp[-1].spacesym)->getSpace()); }
-#line 2411 "pcodeparse.tab.cc"
+#line 2421 "pcodeparse.tab.cc"
     break;
 
   case 91: /* sizedstar: '*' ':' INTEGER  */
-#line 195 "pcodeparse.y"
+#line 197 "pcodeparse.y"
                                 { (yyval.starqual) = new StarQuality; (yyval.starqual)->size = *(yyvsp[0].i); delete (yyvsp[0].i); (yyval.starqual)->id=ConstTpl(pcode->getDefaultSpace()); }
-#line 2417 "pcodeparse.tab.cc"
+#line 2427 "pcodeparse.tab.cc"
     break;
 
   case 92: /* sizedstar: '*'  */
-#line 196 "pcodeparse.y"
+#line 198 "pcodeparse.y"
                                 { (yyval.starqual) = new StarQuality; (yyval.starqual)->size = 0; (yyval.starqual)->id=ConstTpl(pcode->getDefaultSpace()); }
-#line 2423 "pcodeparse.tab.cc"
+#line 2433 "pcodeparse.tab.cc"
     break;
 
   case 93: /* jumpdest: STARTSYM  */
-#line 198 "pcodeparse.y"
+#line 200 "pcodeparse.y"
                                 { VarnodeTpl *sym = (yyvsp[0].startsym)->getVarnode(); (yyval.varnode) = new VarnodeTpl(ConstTpl(ConstTpl::j_curspace),sym->getOffset(),ConstTpl(ConstTpl::j_curspace_size)); delete sym; }
-#line 2429 "pcodeparse.tab.cc"
+#line 2439 "pcodeparse.tab.cc"
     break;
 
   case 94: /* jumpdest: ENDSYM  */
-#line 199 "pcodeparse.y"
+#line 201 "pcodeparse.y"
                                 { VarnodeTpl *sym = (yyvsp[0].endsym)->getVarnode(); (yyval.varnode) = new VarnodeTpl(ConstTpl(ConstTpl::j_curspace),sym->getOffset(),ConstTpl(ConstTpl::j_curspace_size)); delete sym; }
-#line 2435 "pcodeparse.tab.cc"
+#line 2445 "pcodeparse.tab.cc"
     break;
 
   case 95: /* jumpdest: NEXT2SYM  */
-#line 200 "pcodeparse.y"
+#line 202 "pcodeparse.y"
                         { VarnodeTpl *sym = (yyvsp[0].next2sym)->getVarnode(); (yyval.varnode) = new VarnodeTpl(ConstTpl(ConstTpl::j_curspace),sym->getOffset(),ConstTpl(ConstTpl::j_curspace_size)); delete sym; }
-#line 2441 "pcodeparse.tab.cc"
+#line 2451 "pcodeparse.tab.cc"
     break;
 
   case 96: /* jumpdest: INTEGER  */
-#line 201 "pcodeparse.y"
+#line 203 "pcodeparse.y"
                                 { (yyval.varnode) = new VarnodeTpl(ConstTpl(ConstTpl::j_curspace),ConstTpl(ConstTpl::real,*(yyvsp[0].i)),ConstTpl(ConstTpl::j_curspace_size)); delete (yyvsp[0].i); }
-#line 2447 "pcodeparse.tab.cc"
+#line 2457 "pcodeparse.tab.cc"
     break;
 
   case 97: /* jumpdest: BADINTEGER  */
-#line 202 "pcodeparse.y"
+#line 204 "pcodeparse.y"
                                 { (yyval.varnode) = new VarnodeTpl(ConstTpl(ConstTpl::j_curspace),ConstTpl(ConstTpl::real,0),ConstTpl(ConstTpl::j_curspace_size)); yyerror("Parsed integer is too big (overflow)"); }
-#line 2453 "pcodeparse.tab.cc"
+#line 2463 "pcodeparse.tab.cc"
     break;
 
   case 98: /* jumpdest: INTEGER '[' SPACESYM ']'  */
-#line 203 "pcodeparse.y"
+#line 205 "pcodeparse.y"
                                 { AddrSpace *spc = (yyvsp[-1].spacesym)->getSpace(); (yyval.varnode) = new VarnodeTpl(ConstTpl(spc),ConstTpl(ConstTpl::real,*(yyvsp[-3].i)),ConstTpl(ConstTpl::real,spc->getAddrSize())); delete (yyvsp[-3].i); }
-#line 2459 "pcodeparse.tab.cc"
+#line 2469 "pcodeparse.tab.cc"
     break;
 
   case 99: /* jumpdest: label  */
-#line 204 "pcodeparse.y"
+#line 206 "pcodeparse.y"
                                 { (yyval.varnode) = new VarnodeTpl(ConstTpl(pcode->getConstantSpace()),ConstTpl(ConstTpl::j_relative,(yyvsp[0].labelsym)->getIndex()),ConstTpl(ConstTpl::real,sizeof(uintm))); (yyvsp[0].labelsym)->incrementRefCount(); }
-#line 2465 "pcodeparse.tab.cc"
+#line 2475 "pcodeparse.tab.cc"
     break;
 
   case 100: /* jumpdest: STRING  */
-#line 205 "pcodeparse.y"
+#line 207 "pcodeparse.y"
                                 { (yyval.varnode) = (VarnodeTpl *)0; string errmsg = "Unknown jump destination: "+*(yyvsp[0].str); delete (yyvsp[0].str); yyerror(errmsg.c_str()); YYERROR; }
-#line 2471 "pcodeparse.tab.cc"
+#line 2481 "pcodeparse.tab.cc"
     break;
 
   case 101: /* varnode: specificsymbol  */
-#line 207 "pcodeparse.y"
+#line 209 "pcodeparse.y"
                                 { (yyval.varnode) = (yyvsp[0].specsym)->getVarnode(); }
-#line 2477 "pcodeparse.tab.cc"
+#line 2487 "pcodeparse.tab.cc"
     break;
 
   case 102: /* varnode: integervarnode  */
-#line 208 "pcodeparse.y"
+#line 210 "pcodeparse.y"
                                 { (yyval.varnode) = (yyvsp[0].varnode); }
-#line 2483 "pcodeparse.tab.cc"
+#line 2493 "pcodeparse.tab.cc"
     break;
 
   case 103: /* varnode: STRING  */
-#line 209 "pcodeparse.y"
+#line 211 "pcodeparse.y"
                                 { (yyval.varnode) = (VarnodeTpl *)0; string errmsg = "Unknown varnode parameter: "+*(yyvsp[0].str); delete (yyvsp[0].str); yyerror(errmsg.c_str()); YYERROR; }
-#line 2489 "pcodeparse.tab.cc"
+#line 2499 "pcodeparse.tab.cc"
     break;
 
   case 104: /* integervarnode: INTEGER  */
-#line 211 "pcodeparse.y"
+#line 213 "pcodeparse.y"
                                 { (yyval.varnode) = new VarnodeTpl(ConstTpl(pcode->getConstantSpace()),ConstTpl(ConstTpl::real,*(yyvsp[0].i)),ConstTpl(ConstTpl::real,0)); delete (yyvsp[0].i); }
-#line 2495 "pcodeparse.tab.cc"
+#line 2505 "pcodeparse.tab.cc"
     break;
 
   case 105: /* integervarnode: BADINTEGER  */
-#line 212 "pcodeparse.y"
+#line 214 "pcodeparse.y"
                                 { (yyval.varnode) = new VarnodeTpl(ConstTpl(pcode->getConstantSpace()),ConstTpl(ConstTpl::real,0),ConstTpl(ConstTpl::real,0)); yyerror("Parsed integer is too big (overflow)"); }
-#line 2501 "pcodeparse.tab.cc"
+#line 2511 "pcodeparse.tab.cc"
     break;
 
   case 106: /* integervarnode: INTEGER ':' INTEGER  */
-#line 213 "pcodeparse.y"
+#line 215 "pcodeparse.y"
                                 { (yyval.varnode) = new VarnodeTpl(ConstTpl(pcode->getConstantSpace()),ConstTpl(ConstTpl::real,*(yyvsp[-2].i)),ConstTpl(ConstTpl::real,*(yyvsp[0].i))); delete (yyvsp[-2].i); delete (yyvsp[0].i); }
-#line 2507 "pcodeparse.tab.cc"
+#line 2517 "pcodeparse.tab.cc"
     break;
 
   case 107: /* integervarnode: '&' varnode  */
-#line 214 "pcodeparse.y"
+#line 216 "pcodeparse.y"
                                 { (yyval.varnode) = pcode->addressOf((yyvsp[0].varnode),0); }
-#line 2513 "pcodeparse.tab.cc"
+#line 2523 "pcodeparse.tab.cc"
     break;
 
   case 108: /* integervarnode: '&' ':' INTEGER varnode  */
-#line 215 "pcodeparse.y"
+#line 217 "pcodeparse.y"
                                 { (yyval.varnode) = pcode->addressOf((yyvsp[0].varnode),*(yyvsp[-1].i)); delete (yyvsp[-1].i); }
-#line 2519 "pcodeparse.tab.cc"
+#line 2529 "pcodeparse.tab.cc"
     break;
 
   case 109: /* lhsvarnode: specificsymbol  */
-#line 217 "pcodeparse.y"
+#line 219 "pcodeparse.y"
                                 { (yyval.varnode) = (yyvsp[0].specsym)->getVarnode(); }
-#line 2525 "pcodeparse.tab.cc"
+#line 2535 "pcodeparse.tab.cc"
     break;
 
   case 110: /* lhsvarnode: STRING  */
-#line 218 "pcodeparse.y"
+#line 220 "pcodeparse.y"
                                 { (yyval.varnode) = (VarnodeTpl *)0; string errmsg = "Unknown assignment varnode: "+*(yyvsp[0].str); delete (yyvsp[0].str); yyerror(errmsg.c_str()); YYERROR; }
-#line 2531 "pcodeparse.tab.cc"
+#line 2541 "pcodeparse.tab.cc"
     break;
 
   case 111: /* label: '<' LABELSYM '>'  */
-#line 220 "pcodeparse.y"
+#line 222 "pcodeparse.y"
                                 { (yyval.labelsym) = (yyvsp[-1].labelsym); }
-#line 2537 "pcodeparse.tab.cc"
+#line 2547 "pcodeparse.tab.cc"
     break;
 
   case 112: /* label: '<' STRING '>'  */
-#line 221 "pcodeparse.y"
+#line 223 "pcodeparse.y"
                                 { (yyval.labelsym) = pcode->defineLabel( (yyvsp[-1].str) ); }
-#line 2543 "pcodeparse.tab.cc"
+#line 2553 "pcodeparse.tab.cc"
     break;
 
   case 113: /* specificsymbol: VARSYM  */
-#line 223 "pcodeparse.y"
+#line 225 "pcodeparse.y"
                                 { (yyval.specsym) = (yyvsp[0].varsym); }
-#line 2549 "pcodeparse.tab.cc"
+#line 2559 "pcodeparse.tab.cc"
     break;
 
   case 114: /* specificsymbol: OPERANDSYM  */
-#line 224 "pcodeparse.y"
+#line 226 "pcodeparse.y"
                                 { (yyval.specsym) = (yyvsp[0].operandsym); }
-#line 2555 "pcodeparse.tab.cc"
+#line 2565 "pcodeparse.tab.cc"
     break;
 
   case 115: /* specificsymbol: STARTSYM  */
-#line 225 "pcodeparse.y"
+#line 227 "pcodeparse.y"
                                 { (yyval.specsym) = (yyvsp[0].startsym); }
-#line 2561 "pcodeparse.tab.cc"
+#line 2571 "pcodeparse.tab.cc"
     break;
 
   case 116: /* specificsymbol: ENDSYM  */
-#line 226 "pcodeparse.y"
+#line 228 "pcodeparse.y"
                                 { (yyval.specsym) = (yyvsp[0].endsym); }
-#line 2567 "pcodeparse.tab.cc"
+#line 2577 "pcodeparse.tab.cc"
     break;
 
   case 117: /* specificsymbol: NEXT2SYM  */
-#line 227 "pcodeparse.y"
+#line 229 "pcodeparse.y"
                                 { (yyval.specsym) = (yyvsp[0].next2sym); }
-#line 2573 "pcodeparse.tab.cc"
+#line 2583 "pcodeparse.tab.cc"
     break;
 
   case 118: /* paramlist: %empty  */
-#line 229 "pcodeparse.y"
+#line 231 "pcodeparse.y"
                                 { (yyval.param) = new vector<ExprTree *>; }
-#line 2579 "pcodeparse.tab.cc"
+#line 2589 "pcodeparse.tab.cc"
     break;
 
   case 119: /* paramlist: expr  */
-#line 230 "pcodeparse.y"
+#line 232 "pcodeparse.y"
                                 { (yyval.param) = new vector<ExprTree *>; (yyval.param)->push_back((yyvsp[0].tree)); }
-#line 2585 "pcodeparse.tab.cc"
+#line 2595 "pcodeparse.tab.cc"
     break;
 
   case 120: /* paramlist: paramlist ',' expr  */
-#line 231 "pcodeparse.y"
+#line 233 "pcodeparse.y"
                                 { (yyval.param) = (yyvsp[-2].param); (yyval.param)->push_back((yyvsp[0].tree)); }
-#line 2591 "pcodeparse.tab.cc"
+#line 2601 "pcodeparse.tab.cc"
     break;
 
 
-#line 2595 "pcodeparse.tab.cc"
+#line 2605 "pcodeparse.tab.cc"
 
       default: break;
     }
@@ -2633,7 +2643,7 @@ yyreduce:
 yyerrlab:
   /* Make sure we have latest lookahead translation.  See comments at
      user semantic actions for why this is necessary.  */
-  yytoken = yychar == YYEMPTY ? YYSYMBOL_YYEMPTY : YYTRANSLATE (yychar);
+  yytoken = yychar == PCODEEMPTY ? YYSYMBOL_YYEMPTY : YYTRANSLATE (yychar);
   /* If not already recovering from an error, report this error.  */
   if (!yyerrstatus)
     {
@@ -2646,17 +2656,17 @@ yyerrlab:
       /* If just tried and failed to reuse lookahead token after an
          error, discard it.  */
 
-      if (yychar <= YYEOF)
+      if (yychar <= PCODEEOF)
         {
           /* Return failure if at end of input.  */
-          if (yychar == YYEOF)
+          if (yychar == PCODEEOF)
             YYABORT;
         }
       else
         {
           yydestruct ("Error: discarding",
                       yytoken, &yylval);
-          yychar = YYEMPTY;
+          yychar = PCODEEMPTY;
         }
     }
 
@@ -2758,7 +2768,7 @@ yyexhaustedlab:
 | yyreturnlab -- parsing is finished, clean up and return.  |
 `----------------------------------------------------------*/
 yyreturnlab:
-  if (yychar != YYEMPTY)
+  if (yychar != PCODEEMPTY)
     {
       /* Make sure we have latest lookahead translation.  See comments at
          user semantic actions for why this is necessary.  */
@@ -2784,7 +2794,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 233 "pcodeparse.y"
+#line 235 "pcodeparse.y"
 
 
 #define IDENTREC_SIZE 46
@@ -3355,13 +3365,15 @@ void PcodeSnippet::addOperand(const string &name,int4 index)
   addSymbol(sym);
 }
 
-int yylex(void) {
+int pcodelex(void) {
   return pcode->lex();
 }
 
-int yyerror(const char *s)
+int pcodeerror(const char *s)
 
 {
   pcode->reportError((const Location *)0,s);
   return 0;
 }
+
+} // End namespace ghidra

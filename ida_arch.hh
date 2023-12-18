@@ -34,6 +34,13 @@
 #include "plugin.hh"
 #include "ida_minimal.hh"
 
+using ghidra::SleighArchitecture;
+using ghidra::DocumentStorage;
+using ghidra::Scope;
+using ghidra::Symbol;
+using ghidra::Address;
+
+
 class ida_arch : public SleighArchitecture {
 
 public:

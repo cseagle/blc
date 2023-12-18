@@ -31,6 +31,8 @@
 #include "ida_minimal.hh"
 #include "ida_load_image.hh"
 
+using ghidra::Database;
+
 /// \brief Build the LoadImage object and load the executable image
 ///
 /// \param store may hold configuration information

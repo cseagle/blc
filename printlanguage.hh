@@ -16,12 +16,14 @@
 /// \file printlanguage.hh
 /// \brief Classes for printing tokens in a high-level language
 
-#ifndef __PRINT_LANGUAGE__
-#define __PRINT_LANGUAGE__
+#ifndef __PRINTLANGUAGE_HH__
+#define __PRINTLANGUAGE_HH__
 
 #include "capability.hh"
 #include "cast.hh"
 #include "prettyprint.hh"
+
+namespace ghidra {
 
 class PrintLanguage;
 class ResolvedUnion;
@@ -165,6 +167,7 @@ public:
     optoken,			///< Emit atom as operator
     typetoken,			///< Emit atom as operator
     fieldtoken,			///< Emit atom as structure field
+    casetoken,			///< Emit atom as a \e case label
     blanktoken			///< For anonymous types
   };
 
@@ -213,6 +216,7 @@ public:
       const Varnode *vn;	///< A Varnode associated with the token
       const Funcdata *fd;	///< A function associated with the token
       const Datatype *ct;	///< A type associated with the token
+      uintb intValue;		///< An integer value associated with the token
     } ptr_second;		///< Other meta-data associated with the token
     int4 offset;        	///< The offset (within the parent structure) for a \e field token
 
@@ -239,6 +243,19 @@ public:
     /// \brief Construct a token for a function name
     Atom(const string &nm,tagtype t,EmitMarkup::syntax_highlight hl,const PcodeOp *o,const Funcdata *f)
       : name(nm) { type=t; highlight = hl; op = o; ptr_second.fd = f; }
+
+    /// \brief Construct a token with an associated PcodeOp, Varnode, and constant value
+    Atom(const string &nm,tagtype t,EmitMarkup::syntax_highlight hl,const PcodeOp *o,const Varnode *v,uintb intValue)
+      : name(nm) {
+      type=t;
+      highlight = hl;
+      if (t==casetoken)
+	ptr_second.intValue = intValue;
+      else
+	ptr_second.vn = v;
+      op = o;
+    }
+
   };
 private:
   string name;				///< The name of the high-level language
@@ -306,9 +323,10 @@ protected:
   /// The value is ultimately emitted based on its data-type and other associated mark-up
   /// \param val is the value of the constant
   /// \param ct is the data-type of the constant
+  /// \param tag is the type of token associated with the constant
   /// \param vn is the Varnode holding the constant (optional)
   /// \param op is the PcodeOp using the constant (optional)
-  virtual void pushConstant(uintb val,const Datatype *ct,
+  virtual void pushConstant(uintb val,const Datatype *ct,tagtype tag,
 			    const Varnode *vn,const PcodeOp *op)=0;
 
   /// \brief Push a constant marked up by and EquateSymbol onto the RPN stack
@@ -554,9 +572,12 @@ public:
   virtual void opInsertOp(const PcodeOp *op)=0;				///< Emit an INSERT operator
   virtual void opExtractOp(const PcodeOp *op)=0;			///< Emit an EXTRACT operator
   virtual void opPopcountOp(const PcodeOp *op)=0;			///< Emit a POPCOUNT operator
+  virtual void opLzcountOp(const PcodeOp *op)=0;			///< Emit a LZCOUNT operator
+  virtual string unnamedField(int4 off,int4 size);			///< Generate an artificial field name
 
   static int4 mostNaturalBase(uintb val); 			///< Determine the most natural base for an integer
   static void formatBinary(ostream &s,uintb val);		///< Print a number in binary form
 };
 
+} // End namespace ghidra
 #endif

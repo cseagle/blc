@@ -24,6 +24,12 @@
 #include <cmath>
 #endif
 
+namespace ghidra {
+
+#ifdef CPUI_STATISTICS
+using std::sqrt;
+#endif
+
 vector<ArchitectureCapability *> ArchitectureCapability::thelist;
 
 const uint4 ArchitectureCapability::majorversion = 5;
@@ -313,7 +319,7 @@ int4 Architecture::getMinimumLanedRegisterSize(void) const
 
 /// The default model is used whenever an explicit model is not known
 /// or can't be determined.
-/// \param nm is the name of the model to set
+/// \param model is the ProtoModel object to make the default
 void Architecture::setDefaultModel(ProtoModel *model)
 
 {
@@ -1374,6 +1380,7 @@ void Architecture::init(DocumentStorage &store)
   buildDatabase(store);
 
   restoreFromSpec(store);
+  buildCoreTypes(store);
   print->initializeFromArchitecture();
   symboltab->adjustCaches();	// In case the specs created additional address spaces
   buildSymbols(store);
@@ -1395,7 +1402,12 @@ void Architecture::resetDefaultsInternal(void)
   infer_pointers = true;
   analyze_for_loops = true;
   readonlypropagate = false;
-  alias_block_level = 2;	// Block structs and arrays by default
+  nan_ignore_all = false;
+  nan_ignore_compare = true;	// Ignore only NaN operations associated with floating-point comparisons by default
+  alias_block_level = 2;	// Block structs and arrays by default, but not more primitive data-types
+  split_datatype_config = OptionSplitDatatypes::option_struct | OptionSplitDatatypes::option_array
+      | OptionSplitDatatypes::option_pointer;
+  max_jumptable_size = 1024;
 }
 
 /// Reset options that can be modified by the OptionDatabase. This includes
@@ -1531,3 +1543,5 @@ void Statistics::printResults(ostream &s)
 }
 
 #endif
+
+} // End namespace ghidra

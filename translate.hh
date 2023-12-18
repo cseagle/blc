@@ -18,11 +18,13 @@
 ///
 /// Classes for keeping track of spaces and registers (for a single architecture).
 
-#ifndef __CPUI_TRANSLATE__
-#define __CPUI_TRANSLATE__
+#ifndef __TRANSLATE_HH__
+#define __TRANSLATE_HH__
 
 #include "pcoderaw.hh"
 #include "float.hh"
+
+namespace ghidra {
 
 extern AttributeId ATTRIB_CODE;		///< Marshaling attribute "code"
 extern AttributeId ATTRIB_CONTAIN;	///< Marshaling attribute "contain"
@@ -194,7 +196,7 @@ public:
 /// from \e most \e significant to \e least \e significant.
 class JoinRecord {
   friend class AddrSpaceManager;
-  vector<VarnodeData> pieces;	///< All the physical pieces of the symbol
+  vector<VarnodeData> pieces;	///< All the physical pieces of the symbol, most significant to least
   VarnodeData unified; ///< Special entry representing entire symbol in one chunk
 public:
   int4 numPieces(void) const { return pieces.size(); }	///< Get number of pieces in this record
@@ -602,4 +604,5 @@ inline uint4 Translate::getUniqueStart(UniqueLayout layout) const {
   return (layout != ANALYSIS) ? layout + unique_base : layout;
 }
 
+} // End namespace ghidra
 #endif

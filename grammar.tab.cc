@@ -63,27 +63,29 @@
 /* Pull parsers.  */
 #define YYPULL 1
 
-
+/* Substitute the type names.  */
+#define YYSTYPE         GRAMMARSTYPE
 /* Substitute the variable and function names.  */
-#define yyparse         grammar_parse
-#define yylex           grammar_lex
-#define yyerror         grammar_error
-#define yydebug         grammar_debug
-#define yynerrs         grammar_nerrs
-#define yylval          grammar_lval
-#define yychar          grammar_char
+#define yyparse         grammarparse
+#define yylex           grammarlex
+#define yyerror         grammarerror
+#define yydebug         grammardebug
+#define yynerrs         grammarnerrs
+#define yylval          grammarlval
+#define yychar          grammarchar
 
 /* First part of user prologue.  */
-#line 16 "grammar.y"
+#line 17 "grammar.y"
 
 #include "grammar.hh"
 
-extern int yylex(void);
-extern int yyerror(const char *str);
-static CParse *parse;
-extern int yydebug;
+namespace ghidra {
 
-#line 87 "grammar.tab.cc"
+extern int grammarlex(void);
+extern int grammarerror(const char *str);
+static CParse *parse;
+
+#line 89 "grammar.tab.cc"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -108,22 +110,30 @@ extern int yydebug;
 
 
 /* Debug traces.  */
-#ifndef YYDEBUG
-# define YYDEBUG 0
-#endif
+#ifndef GRAMMARDEBUG
+# if defined YYDEBUG
 #if YYDEBUG
-extern int grammar_debug;
+#   define GRAMMARDEBUG 1
+#  else
+#   define GRAMMARDEBUG 0
+#  endif
+# else /* ! defined YYDEBUG */
+#  define GRAMMARDEBUG 0
+# endif /* ! defined YYDEBUG */
+#endif  /* ! defined GRAMMARDEBUG */
+#if GRAMMARDEBUG
+extern int grammardebug;
 #endif
 
 /* Token kinds.  */
-#ifndef YYTOKENTYPE
-# define YYTOKENTYPE
-  enum yytokentype
+#ifndef GRAMMARTOKENTYPE
+# define GRAMMARTOKENTYPE
+  enum grammartokentype
   {
-    YYEMPTY = -2,
-    YYEOF = 0,                     /* "end of file"  */
-    YYerror = 256,                 /* error  */
-    YYUNDEF = 257,                 /* "invalid token"  */
+    GRAMMAREMPTY = -2,
+    GRAMMAREOF = 0,                /* "end of file"  */
+    GRAMMARerror = 256,            /* error  */
+    GRAMMARUNDEF = 257,            /* "invalid token"  */
     DOTDOTDOT = 258,               /* DOTDOTDOT  */
     BADTOKEN = 259,                /* BADTOKEN  */
     STRUCT = 260,                  /* STRUCT  */
@@ -138,14 +148,14 @@ extern int grammar_debug;
     FUNCTION_SPECIFIER = 269,      /* FUNCTION_SPECIFIER  */
     TYPE_NAME = 270                /* TYPE_NAME  */
   };
-  typedef enum yytokentype yytoken_kind_t;
+  typedef enum grammartokentype grammartoken_kind_t;
 #endif
 
 /* Value type.  */
-#if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-union YYSTYPE
+#if ! defined GRAMMARSTYPE && ! defined GRAMMARSTYPE_IS_DECLARED
+union GRAMMARSTYPE
 {
-#line 25 "grammar.y"
+#line 27 "grammar.y"
 
   uint4 flags;
   TypeDeclarator *dec;
@@ -158,19 +168,19 @@ union YYSTYPE
   string *str;
   uintb *i;
 
-#line 162 "grammar.tab.cc"
+#line 172 "grammar.tab.cc"
 
 };
-typedef union YYSTYPE YYSTYPE;
-# define YYSTYPE_IS_TRIVIAL 1
-# define YYSTYPE_IS_DECLARED 1
+typedef union GRAMMARSTYPE GRAMMARSTYPE;
+# define GRAMMARSTYPE_IS_TRIVIAL 1
+# define GRAMMARSTYPE_IS_DECLARED 1
 #endif
 
 
-extern YYSTYPE grammar_lval;
+extern GRAMMARSTYPE grammarlval;
 
 
-int grammar_parse (void);
+int grammarparse (void);
 
 
 
@@ -496,7 +506,7 @@ void free (void *); /* INFRINGES ON USER NAME SPACE */
 
 #if (! defined yyoverflow \
      && (! defined __cplusplus \
-         || (defined YYSTYPE_IS_TRIVIAL && YYSTYPE_IS_TRIVIAL)))
+         || (defined GRAMMARSTYPE_IS_TRIVIAL && GRAMMARSTYPE_IS_TRIVIAL)))
 
 /* A type that is properly aligned for any stack member.  */
 union yyalloc
@@ -613,25 +623,25 @@ static const yytype_int8 yytranslate[] =
       15
 };
 
-#if YYDEBUG
+#if GRAMMARDEBUG
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    60,    60,    61,    65,    66,    70,    71,    72,    73,
-      74,    75,    76,    77,    81,    82,    86,    91,    92,    93,
-      97,    98,    99,   100,   101,   102,   106,   107,   111,   115,
-     116,   117,   118,   122,   123,   127,   132,   133,   134,   135,
-     136,   140,   141,   145,   146,   150,   151,   155,   156,   157,
-     158,   160,   165,   166,   167,   168,   172,   173,   177,   178,
-     182,   183,   187,   188,   189,   193,   194,   195,   199,   201,
-     203,   207
+       0,    62,    62,    63,    67,    68,    72,    73,    74,    75,
+      76,    77,    78,    79,    83,    84,    88,    93,    94,    95,
+      99,   100,   101,   102,   103,   104,   108,   109,   113,   117,
+     118,   119,   120,   124,   125,   129,   134,   135,   136,   137,
+     138,   142,   143,   147,   148,   152,   153,   157,   158,   159,
+     160,   162,   167,   168,   169,   170,   174,   175,   179,   180,
+     184,   185,   189,   190,   191,   195,   196,   197,   201,   203,
+     205,   209
 };
 #endif
 
 /** Accessing symbol of state STATE.  */
 #define YY_ACCESSING_SYMBOL(State) YY_CAST (yysymbol_kind_t, yystos[State])
 
-#if YYDEBUG || 0
+#if GRAMMARDEBUG || 0
 /* The user-facing name of the symbol whose (internal) number is
    YYSYMBOL.  No bounds checking.  */
 static const char *yysymbol_name (yysymbol_kind_t yysymbol) YY_ATTRIBUTE_UNUSED;
@@ -817,7 +827,7 @@ static const yytype_int8 yyr2[] =
 enum { YYENOMEM = -2 };
 
 #define yyerrok         (yyerrstatus = 0)
-#define yyclearin       (yychar = YYEMPTY)
+#define yyclearin       (yychar = GRAMMAREMPTY)
 
 #define YYACCEPT        goto yyacceptlab
 #define YYABORT         goto yyabortlab
@@ -829,7 +839,7 @@ enum { YYENOMEM = -2 };
 
 #define YYBACKUP(Token, Value)                                    \
   do                                                              \
-    if (yychar == YYEMPTY)                                        \
+    if (yychar == GRAMMAREMPTY)                                        \
       {                                                           \
         yychar = (Token);                                         \
         yylval = (Value);                                         \
@@ -845,12 +855,12 @@ enum { YYENOMEM = -2 };
   while (0)
 
 /* Backward compatibility with an undocumented macro.
-   Use YYerror or YYUNDEF. */
-#define YYERRCODE YYUNDEF
+   Use GRAMMARerror or GRAMMARUNDEF. */
+#define YYERRCODE GRAMMARUNDEF
 
 
 /* Enable debugging if requested.  */
-#if YYDEBUG
+#if GRAMMARDEBUG
 
 # ifndef YYFPRINTF
 #  include <stdio.h> /* INFRINGES ON USER NAME SPACE */
@@ -968,12 +978,12 @@ do {                                    \
 /* Nonzero means print parse trace.  It is left uninitialized so that
    multiple parsers can coexist.  */
 int yydebug;
-#else /* !YYDEBUG */
+#else /* !GRAMMARDEBUG */
 # define YYDPRINTF(Args) ((void) 0)
 # define YY_SYMBOL_PRINT(Title, Kind, Value, Location)
 # define YY_STACK_PRINT(Bottom, Top)
 # define YY_REDUCE_PRINT(Rule)
-#endif /* !YYDEBUG */
+#endif /* !GRAMMARDEBUG */
 
 
 /* YYINITDEPTH -- initial size of the parser's stacks.  */
@@ -1073,7 +1083,7 @@ yyparse (void)
 
   YYDPRINTF ((stderr, "Starting parse\n"));
 
-  yychar = YYEMPTY; /* Cause a token to be read.  */
+  yychar = GRAMMAREMPTY; /* Cause a token to be read.  */
 
   goto yysetstate;
 
@@ -1183,25 +1193,25 @@ yybackup:
   /* Not known => get a lookahead token if don't already have one.  */
 
   /* YYCHAR is either empty, or end-of-input, or a valid lookahead.  */
-  if (yychar == YYEMPTY)
+  if (yychar == GRAMMAREMPTY)
     {
       YYDPRINTF ((stderr, "Reading a token\n"));
       yychar = yylex ();
     }
 
-  if (yychar <= YYEOF)
+  if (yychar <= GRAMMAREOF)
     {
-      yychar = YYEOF;
+      yychar = GRAMMAREOF;
       yytoken = YYSYMBOL_YYEOF;
       YYDPRINTF ((stderr, "Now at end of input.\n"));
     }
-  else if (yychar == YYerror)
+  else if (yychar == GRAMMARerror)
     {
       /* The scanner already issued an error message, process directly
          to error recovery.  But do not keep the error token as
          lookahead, it is too special and may lead us to an endless
          loop in error recovery. */
-      yychar = YYUNDEF;
+      yychar = GRAMMARUNDEF;
       yytoken = YYSYMBOL_YYerror;
       goto yyerrlab1;
     }
@@ -1238,7 +1248,7 @@ yybackup:
   YY_IGNORE_MAYBE_UNINITIALIZED_END
 
   /* Discard the shifted token.  */
-  yychar = YYEMPTY;
+  yychar = GRAMMAREMPTY;
   goto yynewstate;
 
 
@@ -1274,427 +1284,427 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* document: DECLARATION_RESULT declaration  */
-#line 60 "grammar.y"
+#line 62 "grammar.y"
                                  { parse->setResultDeclarations((yyvsp[0].declist)); }
-#line 1280 "grammar.tab.cc"
+#line 1290 "grammar.tab.cc"
     break;
 
   case 3: /* document: PARAM_RESULT parameter_declaration  */
-#line 61 "grammar.y"
+#line 63 "grammar.y"
                                      { vector<TypeDeclarator *> *res = parse->newVecDeclarator(); res->push_back((yyvsp[0].dec)); parse->setResultDeclarations(res); }
-#line 1286 "grammar.tab.cc"
+#line 1296 "grammar.tab.cc"
     break;
 
   case 4: /* declaration: declaration_specifiers ';'  */
-#line 65 "grammar.y"
+#line 67 "grammar.y"
                              { (yyval.declist) = parse->mergeSpecDecVec((yyvsp[-1].spec)); }
-#line 1292 "grammar.tab.cc"
+#line 1302 "grammar.tab.cc"
     break;
 
   case 5: /* declaration: declaration_specifiers init_declarator_list ';'  */
-#line 66 "grammar.y"
+#line 68 "grammar.y"
                                                     { (yyval.declist) = parse->mergeSpecDecVec((yyvsp[-2].spec),(yyvsp[-1].declist)); }
-#line 1298 "grammar.tab.cc"
+#line 1308 "grammar.tab.cc"
     break;
 
   case 6: /* declaration_specifiers: STORAGE_CLASS_SPECIFIER  */
-#line 70 "grammar.y"
+#line 72 "grammar.y"
                           { (yyval.spec) = parse->newSpecifier(); parse->addSpecifier((yyval.spec),(yyvsp[0].str)); }
-#line 1304 "grammar.tab.cc"
+#line 1314 "grammar.tab.cc"
     break;
 
   case 7: /* declaration_specifiers: type_specifier  */
-#line 71 "grammar.y"
+#line 73 "grammar.y"
                    { (yyval.spec) = parse->newSpecifier(); parse->addTypeSpecifier((yyval.spec),(yyvsp[0].type)); }
-#line 1310 "grammar.tab.cc"
+#line 1320 "grammar.tab.cc"
     break;
 
   case 8: /* declaration_specifiers: TYPE_QUALIFIER  */
-#line 72 "grammar.y"
+#line 74 "grammar.y"
                    { (yyval.spec) = parse->newSpecifier(); parse->addSpecifier((yyval.spec),(yyvsp[0].str)); }
-#line 1316 "grammar.tab.cc"
+#line 1326 "grammar.tab.cc"
     break;
 
   case 9: /* declaration_specifiers: FUNCTION_SPECIFIER  */
-#line 73 "grammar.y"
+#line 75 "grammar.y"
                        { (yyval.spec) = parse->newSpecifier(); parse->addFuncSpecifier((yyval.spec),(yyvsp[0].str)); }
-#line 1322 "grammar.tab.cc"
+#line 1332 "grammar.tab.cc"
     break;
 
   case 10: /* declaration_specifiers: STORAGE_CLASS_SPECIFIER declaration_specifiers  */
-#line 74 "grammar.y"
+#line 76 "grammar.y"
                                                    { (yyval.spec) = parse->addSpecifier((yyvsp[0].spec),(yyvsp[-1].str)); }
-#line 1328 "grammar.tab.cc"
+#line 1338 "grammar.tab.cc"
     break;
 
   case 11: /* declaration_specifiers: type_specifier declaration_specifiers  */
-#line 75 "grammar.y"
+#line 77 "grammar.y"
                                           { (yyval.spec) = parse->addTypeSpecifier((yyvsp[0].spec),(yyvsp[-1].type)); }
-#line 1334 "grammar.tab.cc"
+#line 1344 "grammar.tab.cc"
     break;
 
   case 12: /* declaration_specifiers: TYPE_QUALIFIER declaration_specifiers  */
-#line 76 "grammar.y"
+#line 78 "grammar.y"
                                           { (yyval.spec) = parse->addSpecifier((yyvsp[0].spec),(yyvsp[-1].str)); }
-#line 1340 "grammar.tab.cc"
+#line 1350 "grammar.tab.cc"
     break;
 
   case 13: /* declaration_specifiers: FUNCTION_SPECIFIER declaration_specifiers  */
-#line 77 "grammar.y"
+#line 79 "grammar.y"
                                               { (yyval.spec) = parse->addFuncSpecifier((yyvsp[0].spec),(yyvsp[-1].str)); }
-#line 1346 "grammar.tab.cc"
+#line 1356 "grammar.tab.cc"
     break;
 
   case 14: /* init_declarator_list: init_declarator  */
-#line 81 "grammar.y"
+#line 83 "grammar.y"
                   { (yyval.declist) = parse->newVecDeclarator(); (yyval.declist)->push_back((yyvsp[0].dec)); }
-#line 1352 "grammar.tab.cc"
+#line 1362 "grammar.tab.cc"
     break;
 
   case 15: /* init_declarator_list: init_declarator_list ',' init_declarator  */
-#line 82 "grammar.y"
+#line 84 "grammar.y"
                                              { (yyval.declist) = (yyvsp[-2].declist); (yyval.declist)->push_back((yyvsp[0].dec)); }
-#line 1358 "grammar.tab.cc"
+#line 1368 "grammar.tab.cc"
     break;
 
   case 16: /* init_declarator: declarator  */
-#line 86 "grammar.y"
+#line 88 "grammar.y"
              { (yyval.dec) = (yyvsp[0].dec); }
-#line 1364 "grammar.tab.cc"
+#line 1374 "grammar.tab.cc"
     break;
 
   case 17: /* type_specifier: TYPE_NAME  */
-#line 91 "grammar.y"
+#line 93 "grammar.y"
             { (yyval.type) = (yyvsp[0].type); }
-#line 1370 "grammar.tab.cc"
+#line 1380 "grammar.tab.cc"
     break;
 
   case 18: /* type_specifier: struct_or_union_specifier  */
-#line 92 "grammar.y"
+#line 94 "grammar.y"
                               { (yyval.type) = (yyvsp[0].type); }
-#line 1376 "grammar.tab.cc"
+#line 1386 "grammar.tab.cc"
     break;
 
   case 19: /* type_specifier: enum_specifier  */
-#line 93 "grammar.y"
+#line 95 "grammar.y"
                    { (yyval.type) = (yyvsp[0].type); }
-#line 1382 "grammar.tab.cc"
+#line 1392 "grammar.tab.cc"
     break;
 
   case 20: /* struct_or_union_specifier: STRUCT '{' struct_declaration_list '}'  */
-#line 97 "grammar.y"
+#line 99 "grammar.y"
                                          { (yyval.type) = parse->newStruct("",(yyvsp[-1].declist)); }
-#line 1388 "grammar.tab.cc"
+#line 1398 "grammar.tab.cc"
     break;
 
   case 21: /* struct_or_union_specifier: STRUCT IDENTIFIER '{' struct_declaration_list '}'  */
-#line 98 "grammar.y"
+#line 100 "grammar.y"
                                                       { (yyval.type) = parse->newStruct(*(yyvsp[-3].str),(yyvsp[-1].declist)); }
-#line 1394 "grammar.tab.cc"
+#line 1404 "grammar.tab.cc"
     break;
 
   case 22: /* struct_or_union_specifier: STRUCT IDENTIFIER  */
-#line 99 "grammar.y"
+#line 101 "grammar.y"
                       { (yyval.type) = parse->oldStruct(*(yyvsp[0].str)); }
-#line 1400 "grammar.tab.cc"
+#line 1410 "grammar.tab.cc"
     break;
 
   case 23: /* struct_or_union_specifier: UNION '{' struct_declaration_list '}'  */
-#line 100 "grammar.y"
+#line 102 "grammar.y"
                                           { (yyval.type) = parse->newUnion("",(yyvsp[-1].declist)); }
-#line 1406 "grammar.tab.cc"
+#line 1416 "grammar.tab.cc"
     break;
 
   case 24: /* struct_or_union_specifier: UNION IDENTIFIER '{' struct_declaration_list '}'  */
-#line 101 "grammar.y"
+#line 103 "grammar.y"
                                                      { (yyval.type) = parse->newUnion(*(yyvsp[-3].str),(yyvsp[-1].declist)); }
-#line 1412 "grammar.tab.cc"
+#line 1422 "grammar.tab.cc"
     break;
 
   case 25: /* struct_or_union_specifier: UNION IDENTIFIER  */
-#line 102 "grammar.y"
+#line 104 "grammar.y"
                      { (yyval.type) = parse->oldUnion(*(yyvsp[0].str)); }
-#line 1418 "grammar.tab.cc"
+#line 1428 "grammar.tab.cc"
     break;
 
   case 26: /* struct_declaration_list: struct_declaration  */
-#line 106 "grammar.y"
+#line 108 "grammar.y"
                      { (yyval.declist) = (yyvsp[0].declist); }
-#line 1424 "grammar.tab.cc"
+#line 1434 "grammar.tab.cc"
     break;
 
   case 27: /* struct_declaration_list: struct_declaration_list struct_declaration  */
-#line 107 "grammar.y"
+#line 109 "grammar.y"
                                                { (yyval.declist) = (yyvsp[-1].declist); (yyval.declist)->insert((yyval.declist)->end(),(yyvsp[0].declist)->begin(),(yyvsp[0].declist)->end()); }
-#line 1430 "grammar.tab.cc"
+#line 1440 "grammar.tab.cc"
     break;
 
   case 28: /* struct_declaration: specifier_qualifier_list struct_declarator_list ';'  */
-#line 111 "grammar.y"
+#line 113 "grammar.y"
                                                       { (yyval.declist) = parse->mergeSpecDecVec((yyvsp[-2].spec),(yyvsp[-1].declist)); }
-#line 1436 "grammar.tab.cc"
+#line 1446 "grammar.tab.cc"
     break;
 
   case 29: /* specifier_qualifier_list: type_specifier  */
-#line 115 "grammar.y"
+#line 117 "grammar.y"
                  { (yyval.spec) = parse->newSpecifier(); parse->addTypeSpecifier((yyval.spec),(yyvsp[0].type)); }
-#line 1442 "grammar.tab.cc"
+#line 1452 "grammar.tab.cc"
     break;
 
   case 30: /* specifier_qualifier_list: type_specifier specifier_qualifier_list  */
-#line 116 "grammar.y"
+#line 118 "grammar.y"
                                             { (yyval.spec) = parse->addTypeSpecifier((yyvsp[0].spec),(yyvsp[-1].type)); }
-#line 1448 "grammar.tab.cc"
+#line 1458 "grammar.tab.cc"
     break;
 
   case 31: /* specifier_qualifier_list: TYPE_QUALIFIER  */
-#line 117 "grammar.y"
+#line 119 "grammar.y"
                    { (yyval.spec) = parse->newSpecifier(); parse->addSpecifier((yyval.spec),(yyvsp[0].str)); }
-#line 1454 "grammar.tab.cc"
+#line 1464 "grammar.tab.cc"
     break;
 
   case 32: /* specifier_qualifier_list: TYPE_QUALIFIER specifier_qualifier_list  */
-#line 118 "grammar.y"
+#line 120 "grammar.y"
                                             { (yyval.spec) = parse->addSpecifier((yyvsp[0].spec),(yyvsp[-1].str)); }
-#line 1460 "grammar.tab.cc"
+#line 1470 "grammar.tab.cc"
     break;
 
   case 33: /* struct_declarator_list: struct_declarator  */
-#line 122 "grammar.y"
+#line 124 "grammar.y"
                     { (yyval.declist) = parse->newVecDeclarator(); (yyval.declist)->push_back((yyvsp[0].dec)); }
-#line 1466 "grammar.tab.cc"
+#line 1476 "grammar.tab.cc"
     break;
 
   case 34: /* struct_declarator_list: struct_declarator_list ',' struct_declarator  */
-#line 123 "grammar.y"
+#line 125 "grammar.y"
                                                  { (yyval.declist) = (yyvsp[-2].declist); (yyval.declist)->push_back((yyvsp[0].dec)); }
-#line 1472 "grammar.tab.cc"
+#line 1482 "grammar.tab.cc"
     break;
 
   case 35: /* struct_declarator: declarator  */
-#line 127 "grammar.y"
+#line 129 "grammar.y"
              { (yyval.dec) = (yyvsp[0].dec); }
-#line 1478 "grammar.tab.cc"
+#line 1488 "grammar.tab.cc"
     break;
 
   case 36: /* enum_specifier: ENUM IDENTIFIER '{' enumerator_list '}'  */
-#line 132 "grammar.y"
+#line 134 "grammar.y"
                                           { (yyval.type) = parse->newEnum(*(yyvsp[-3].str),(yyvsp[-1].vecenum)); }
-#line 1484 "grammar.tab.cc"
+#line 1494 "grammar.tab.cc"
     break;
 
   case 37: /* enum_specifier: ENUM '{' enumerator_list '}'  */
-#line 133 "grammar.y"
+#line 135 "grammar.y"
                                  { (yyval.type) = parse->newEnum("",(yyvsp[-1].vecenum)); }
-#line 1490 "grammar.tab.cc"
+#line 1500 "grammar.tab.cc"
     break;
 
   case 38: /* enum_specifier: ENUM IDENTIFIER '{' enumerator_list ',' '}'  */
-#line 134 "grammar.y"
+#line 136 "grammar.y"
                                                 { (yyval.type) = parse->newEnum(*(yyvsp[-4].str),(yyvsp[-2].vecenum)); }
-#line 1496 "grammar.tab.cc"
+#line 1506 "grammar.tab.cc"
     break;
 
   case 39: /* enum_specifier: ENUM '{' enumerator_list ',' '}'  */
-#line 135 "grammar.y"
+#line 137 "grammar.y"
                                      { (yyval.type) = parse->newEnum("",(yyvsp[-2].vecenum)); }
-#line 1502 "grammar.tab.cc"
+#line 1512 "grammar.tab.cc"
     break;
 
   case 40: /* enum_specifier: ENUM IDENTIFIER  */
-#line 136 "grammar.y"
+#line 138 "grammar.y"
                     { (yyval.type) = parse->oldEnum(*(yyvsp[0].str)); }
-#line 1508 "grammar.tab.cc"
+#line 1518 "grammar.tab.cc"
     break;
 
   case 41: /* enumerator_list: enumerator  */
-#line 140 "grammar.y"
+#line 142 "grammar.y"
              { (yyval.vecenum) = parse->newVecEnumerator(); (yyval.vecenum)->push_back((yyvsp[0].enumer)); }
-#line 1514 "grammar.tab.cc"
+#line 1524 "grammar.tab.cc"
     break;
 
   case 42: /* enumerator_list: enumerator_list ',' enumerator  */
-#line 141 "grammar.y"
+#line 143 "grammar.y"
                                    { (yyval.vecenum) = (yyvsp[-2].vecenum); (yyval.vecenum)->push_back((yyvsp[0].enumer)); }
-#line 1520 "grammar.tab.cc"
+#line 1530 "grammar.tab.cc"
     break;
 
   case 43: /* enumerator: IDENTIFIER  */
-#line 145 "grammar.y"
+#line 147 "grammar.y"
              { (yyval.enumer) = parse->newEnumerator(*(yyvsp[0].str)); }
-#line 1526 "grammar.tab.cc"
+#line 1536 "grammar.tab.cc"
     break;
 
   case 44: /* enumerator: IDENTIFIER '=' NUMBER  */
-#line 146 "grammar.y"
+#line 148 "grammar.y"
                           { (yyval.enumer) = parse->newEnumerator(*(yyvsp[-2].str),*(yyvsp[0].i)); }
-#line 1532 "grammar.tab.cc"
+#line 1542 "grammar.tab.cc"
     break;
 
   case 45: /* declarator: direct_declarator  */
-#line 150 "grammar.y"
+#line 152 "grammar.y"
                     { (yyval.dec) = (yyvsp[0].dec); }
-#line 1538 "grammar.tab.cc"
+#line 1548 "grammar.tab.cc"
     break;
 
   case 46: /* declarator: pointer direct_declarator  */
-#line 151 "grammar.y"
+#line 153 "grammar.y"
                               { (yyval.dec) = parse->mergePointer((yyvsp[-1].ptrspec),(yyvsp[0].dec)); }
-#line 1544 "grammar.tab.cc"
+#line 1554 "grammar.tab.cc"
     break;
 
   case 47: /* direct_declarator: IDENTIFIER  */
-#line 155 "grammar.y"
+#line 157 "grammar.y"
              { (yyval.dec) = parse->newDeclarator((yyvsp[0].str)); }
-#line 1550 "grammar.tab.cc"
+#line 1560 "grammar.tab.cc"
     break;
 
   case 48: /* direct_declarator: '(' declarator ')'  */
-#line 156 "grammar.y"
+#line 158 "grammar.y"
                        { (yyval.dec) = (yyvsp[-1].dec); }
-#line 1556 "grammar.tab.cc"
+#line 1566 "grammar.tab.cc"
     break;
 
   case 49: /* direct_declarator: direct_declarator '[' type_qualifier_list assignment_expression ']'  */
-#line 157 "grammar.y"
+#line 159 "grammar.y"
                                                                         { (yyval.dec) = parse->newArray((yyvsp[-4].dec),(yyvsp[-2].flags),(yyvsp[-1].i)); }
-#line 1562 "grammar.tab.cc"
+#line 1572 "grammar.tab.cc"
     break;
 
   case 50: /* direct_declarator: direct_declarator '[' assignment_expression ']'  */
-#line 158 "grammar.y"
+#line 160 "grammar.y"
                                                     { (yyval.dec) = parse->newArray((yyvsp[-3].dec),0,(yyvsp[-1].i)); }
-#line 1568 "grammar.tab.cc"
+#line 1578 "grammar.tab.cc"
     break;
 
   case 51: /* direct_declarator: direct_declarator '(' parameter_type_list ')'  */
-#line 160 "grammar.y"
+#line 162 "grammar.y"
                                                   { (yyval.dec) = parse->newFunc((yyvsp[-3].dec),(yyvsp[-1].declist)); }
-#line 1574 "grammar.tab.cc"
+#line 1584 "grammar.tab.cc"
     break;
 
   case 52: /* pointer: '*'  */
-#line 165 "grammar.y"
+#line 167 "grammar.y"
       { (yyval.ptrspec) = parse->newPointer(); (yyval.ptrspec)->push_back(0); }
-#line 1580 "grammar.tab.cc"
+#line 1590 "grammar.tab.cc"
     break;
 
   case 53: /* pointer: '*' type_qualifier_list  */
-#line 166 "grammar.y"
+#line 168 "grammar.y"
                             { (yyval.ptrspec) = parse->newPointer(); (yyval.ptrspec)->push_back((yyvsp[0].flags)); }
-#line 1586 "grammar.tab.cc"
+#line 1596 "grammar.tab.cc"
     break;
 
   case 54: /* pointer: '*' pointer  */
-#line 167 "grammar.y"
+#line 169 "grammar.y"
                 { (yyval.ptrspec) = (yyvsp[0].ptrspec); (yyval.ptrspec)->push_back(0); }
-#line 1592 "grammar.tab.cc"
+#line 1602 "grammar.tab.cc"
     break;
 
   case 55: /* pointer: '*' type_qualifier_list pointer  */
-#line 168 "grammar.y"
+#line 170 "grammar.y"
                                     { (yyval.ptrspec) = (yyvsp[0].ptrspec); (yyval.ptrspec)->push_back((yyvsp[-1].flags)); }
-#line 1598 "grammar.tab.cc"
+#line 1608 "grammar.tab.cc"
     break;
 
   case 56: /* type_qualifier_list: TYPE_QUALIFIER  */
-#line 172 "grammar.y"
+#line 174 "grammar.y"
                  { (yyval.flags) = parse->convertFlag((yyvsp[0].str)); }
-#line 1604 "grammar.tab.cc"
+#line 1614 "grammar.tab.cc"
     break;
 
   case 57: /* type_qualifier_list: type_qualifier_list TYPE_QUALIFIER  */
-#line 173 "grammar.y"
+#line 175 "grammar.y"
                                        { (yyval.flags) = (yyvsp[-1].flags); (yyval.flags) |= parse->convertFlag((yyvsp[0].str)); }
-#line 1610 "grammar.tab.cc"
+#line 1620 "grammar.tab.cc"
     break;
 
   case 58: /* parameter_type_list: parameter_list  */
-#line 177 "grammar.y"
+#line 179 "grammar.y"
                  { (yyval.declist) = (yyvsp[0].declist); }
-#line 1616 "grammar.tab.cc"
+#line 1626 "grammar.tab.cc"
     break;
 
   case 59: /* parameter_type_list: parameter_list ',' DOTDOTDOT  */
-#line 178 "grammar.y"
+#line 180 "grammar.y"
                                  { (yyval.declist) = (yyvsp[-2].declist); (yyval.declist)->push_back((TypeDeclarator *)0); }
-#line 1622 "grammar.tab.cc"
+#line 1632 "grammar.tab.cc"
     break;
 
   case 60: /* parameter_list: parameter_declaration  */
-#line 182 "grammar.y"
+#line 184 "grammar.y"
                         { (yyval.declist) = parse->newVecDeclarator(); (yyval.declist)->push_back((yyvsp[0].dec)); }
-#line 1628 "grammar.tab.cc"
+#line 1638 "grammar.tab.cc"
     break;
 
   case 61: /* parameter_list: parameter_list ',' parameter_declaration  */
-#line 183 "grammar.y"
+#line 185 "grammar.y"
                                              { (yyval.declist) = (yyvsp[-2].declist); (yyval.declist)->push_back((yyvsp[0].dec)); }
-#line 1634 "grammar.tab.cc"
+#line 1644 "grammar.tab.cc"
     break;
 
   case 62: /* parameter_declaration: declaration_specifiers declarator  */
-#line 187 "grammar.y"
+#line 189 "grammar.y"
                                     { (yyval.dec) = parse->mergeSpecDec((yyvsp[-1].spec),(yyvsp[0].dec)); }
-#line 1640 "grammar.tab.cc"
+#line 1650 "grammar.tab.cc"
     break;
 
   case 63: /* parameter_declaration: declaration_specifiers  */
-#line 188 "grammar.y"
+#line 190 "grammar.y"
                            { (yyval.dec) = parse->mergeSpecDec((yyvsp[0].spec)); }
-#line 1646 "grammar.tab.cc"
+#line 1656 "grammar.tab.cc"
     break;
 
   case 64: /* parameter_declaration: declaration_specifiers abstract_declarator  */
-#line 189 "grammar.y"
+#line 191 "grammar.y"
                                                { (yyval.dec) = parse->mergeSpecDec((yyvsp[-1].spec),(yyvsp[0].dec)); }
-#line 1652 "grammar.tab.cc"
+#line 1662 "grammar.tab.cc"
     break;
 
   case 65: /* abstract_declarator: pointer  */
-#line 193 "grammar.y"
+#line 195 "grammar.y"
           { (yyval.dec) = parse->newDeclarator(); parse->mergePointer((yyvsp[0].ptrspec),(yyval.dec)); }
-#line 1658 "grammar.tab.cc"
+#line 1668 "grammar.tab.cc"
     break;
 
   case 66: /* abstract_declarator: direct_abstract_declarator  */
-#line 194 "grammar.y"
+#line 196 "grammar.y"
                                { (yyval.dec) = (yyvsp[0].dec); }
-#line 1664 "grammar.tab.cc"
+#line 1674 "grammar.tab.cc"
     break;
 
   case 67: /* abstract_declarator: pointer direct_abstract_declarator  */
-#line 195 "grammar.y"
+#line 197 "grammar.y"
                                        { (yyval.dec) = parse->mergePointer((yyvsp[-1].ptrspec),(yyvsp[0].dec)); }
-#line 1670 "grammar.tab.cc"
+#line 1680 "grammar.tab.cc"
     break;
 
   case 68: /* direct_abstract_declarator: '(' abstract_declarator ')'  */
-#line 199 "grammar.y"
+#line 201 "grammar.y"
                               { (yyval.dec) = (yyvsp[-1].dec); }
-#line 1676 "grammar.tab.cc"
+#line 1686 "grammar.tab.cc"
     break;
 
   case 69: /* direct_abstract_declarator: direct_abstract_declarator '[' assignment_expression ']'  */
-#line 201 "grammar.y"
+#line 203 "grammar.y"
                                                              { (yyval.dec) = parse->newArray((yyvsp[-3].dec),0,(yyvsp[-1].i)); }
-#line 1682 "grammar.tab.cc"
+#line 1692 "grammar.tab.cc"
     break;
 
   case 70: /* direct_abstract_declarator: direct_abstract_declarator '(' parameter_type_list ')'  */
-#line 203 "grammar.y"
+#line 205 "grammar.y"
                                                            { (yyval.dec) = parse->newFunc((yyvsp[-3].dec),(yyvsp[-1].declist)); }
-#line 1688 "grammar.tab.cc"
+#line 1698 "grammar.tab.cc"
     break;
 
   case 71: /* assignment_expression: NUMBER  */
-#line 207 "grammar.y"
+#line 209 "grammar.y"
          { (yyval.i) = (yyvsp[0].i); }
-#line 1694 "grammar.tab.cc"
+#line 1704 "grammar.tab.cc"
     break;
 
 
-#line 1698 "grammar.tab.cc"
+#line 1708 "grammar.tab.cc"
 
       default: break;
     }
@@ -1736,7 +1746,7 @@ yyreduce:
 yyerrlab:
   /* Make sure we have latest lookahead translation.  See comments at
      user semantic actions for why this is necessary.  */
-  yytoken = yychar == YYEMPTY ? YYSYMBOL_YYEMPTY : YYTRANSLATE (yychar);
+  yytoken = yychar == GRAMMAREMPTY ? YYSYMBOL_YYEMPTY : YYTRANSLATE (yychar);
   /* If not already recovering from an error, report this error.  */
   if (!yyerrstatus)
     {
@@ -1749,17 +1759,17 @@ yyerrlab:
       /* If just tried and failed to reuse lookahead token after an
          error, discard it.  */
 
-      if (yychar <= YYEOF)
+      if (yychar <= GRAMMAREOF)
         {
           /* Return failure if at end of input.  */
-          if (yychar == YYEOF)
+          if (yychar == GRAMMAREOF)
             YYABORT;
         }
       else
         {
           yydestruct ("Error: discarding",
                       yytoken, &yylval);
-          yychar = YYEMPTY;
+          yychar = GRAMMAREMPTY;
         }
     }
 
@@ -1861,7 +1871,7 @@ yyexhaustedlab:
 | yyreturnlab -- parsing is finished, clean up and return.  |
 `----------------------------------------------------------*/
 yyreturnlab:
-  if (yychar != YYEMPTY)
+  if (yychar != GRAMMAREMPTY)
     {
       /* Make sure we have latest lookahead translation.  See comments at
          user semantic actions for why this is necessary.  */
@@ -1887,7 +1897,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 210 "grammar.y"
+#line 212 "grammar.y"
 
 
 void GrammarToken::set(uint4 tp)
@@ -2398,18 +2408,22 @@ bool FunctionModifier::isValid(void) const
 Datatype *FunctionModifier::modType(Datatype *base,const TypeDeclarator *decl,Architecture *glb) const
 
 {
-  vector<Datatype *> intypes;
+  PrototypePieces proto;
 
+  if (base == (Datatype *)0)
+    proto.outtype = glb->types->getTypeVoid();
+  else
+    proto.outtype = base;
   // Varargs is encoded as extra null pointer in paramlist
-  bool dotdotdot = false;
+  proto.firstVarArgSlot = -1;
   if ((!paramlist.empty())&&(paramlist.back() == (TypeDeclarator *)0)) {
-    dotdotdot = true;
+    proto.firstVarArgSlot = paramlist.size() - 1;
   }
 
-  getInTypes(intypes,glb);
+  getInTypes(proto.intypes,glb);
 
-  ProtoModel *protomodel = decl->getModel(glb);
-  return glb->types->getTypeCode(protomodel,base,intypes,dotdotdot);
+  proto.model = decl->getModel(glb);
+  return glb->types->getTypeCode(proto);
 }
 
 TypeDeclarator::~TypeDeclarator(void)
@@ -2460,7 +2474,7 @@ bool TypeDeclarator::getPrototype(PrototypePieces &pieces,Architecture *glb) con
   fmod->getInTypes(pieces.intypes,glb);
   pieces.innames.clear();
   fmod->getInNames(pieces.innames);
-  pieces.dotdotdot = fmod->isDotdotdot();
+  pieces.firstVarArgSlot = fmod->isDotdotdot() ? pieces.intypes.size() : -1;
 
   // Construct the output type
   pieces.outtype = basetype;
@@ -2721,7 +2735,7 @@ Datatype *CParse::newStruct(const string &ident,vector<TypeDeclarator *> *declis
     sublist.emplace_back(0,-1,decl->getIdentifier(),decl->buildType(glb));
   }
 
-  TypeStruct::assignFieldOffsets(sublist,glb->types->getStructAlign());
+  TypeStruct::assignFieldOffsets(sublist);
   if (!glb->types->setFields(sublist,res,-1,0)) {
     setError("Bad structure definition");
     glb->types->destroyType(res);
@@ -3010,13 +3024,13 @@ bool CParse::parseStream(istream &s,uint4 doctype)
   return runParse(doctype);
 }
 
-int yylex(void)
+int grammarlex(void)
 
 {
   return parse->lex();
 }
 
-int yyerror(const char *str)
+int grammarerror(const char *str)
 
 {
   return 0;
@@ -3248,3 +3262,4 @@ Address parse_machaddr(istream &s,int4 &defaultsize,const TypeFactory &typegrp,b
   return res;
 }
 
+} // End namespace ghidra

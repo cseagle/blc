@@ -16,6 +16,8 @@
 #include "marshal.hh"
 #include "translate.hh"
 
+namespace ghidra {
+
 using namespace PackedFormat;
 
 unordered_map<string,uint4> AttributeId::lookupAttributeId;
@@ -231,6 +233,25 @@ uint4 XmlDecode::getNextAttributeId(void)
   return 0;
 }
 
+uint4 XmlDecode::getIndexedAttributeId(const AttributeId &attribId)
+
+{
+  const Element *el = elStack.back();
+  if (attributeIndex < 0 || attributeIndex >= el->getNumAttributes())
+    return ATTRIB_UNKNOWN.getId();
+  // For XML, the index is encoded directly in the attribute name
+  const string &attribName(el->getAttributeName(attributeIndex));
+  // Does the name start with desired attribute base name?
+  if (0 != attribName.compare(0,attribId.getName().size(),attribId.getName()))
+    return ATTRIB_UNKNOWN.getId();
+  uint4 val = 0;
+  istringstream s(attribName.substr(attribId.getName().size()));	// Strip off the base name
+  s >> dec >> val;		// Decode the remaining decimal integer (starting at 1)
+  if (val == 0)
+    throw LowlevelError("Bad indexed attribute: " + attribId.getName());
+  return attribId.getId() + (val-1);
+}
+
 /// \brief Find the attribute index, within the given element, for the given name
 ///
 /// Run through the attributes of the element until we find the one matching the name,
@@ -292,6 +313,33 @@ intb XmlDecode::readSignedInteger(const AttributeId &attribId)
     s.unsetf(ios::dec | ios::hex | ios::oct);
     s >> res;
   }
+  return res;
+}
+
+intb XmlDecode::readSignedIntegerExpectString(const string &expect,intb expectval)
+
+{
+  const Element *el = elStack.back();
+  const string &value( el->getAttributeValue(attributeIndex) );
+  if (value == expect)
+    return expectval;
+  istringstream s2(value);
+  s2.unsetf(ios::dec | ios::hex | ios::oct);
+  intb res = 0;
+  s2 >> res;
+  return res;
+}
+
+intb XmlDecode::readSignedIntegerExpectString(const AttributeId &attribId,const string &expect,intb expectval)
+
+{
+  string value = readString(attribId);
+  if (value == expect)
+    return expectval;
+  istringstream s2(value);
+  s2.unsetf(ios::dec | ios::hex | ios::oct);
+  intb res = 0;
+  s2 >> res;
   return res;
 }
 
@@ -450,6 +498,16 @@ void XmlEncode::writeString(const AttributeId &attribId,const string &val)
     return;
   }
   a_v(outStream,attribId.getName(),val);
+}
+
+void XmlEncode::writeStringIndexed(const AttributeId &attribId,uint4 index,const string &val)
+
+{
+  outStream << ' ' << attribId.getName() << dec << index + 1;
+  outStream << "=\"";
+  xml_escape(outStream,val.c_str());
+  outStream << "\"";
+
 }
 
 void XmlEncode::writeSpace(const AttributeId &attribId,const AddrSpace *spc)
@@ -684,6 +742,12 @@ uint4 PackedDecode::getNextAttributeId(void)
   return id;
 }
 
+uint4 PackedDecode::getIndexedAttributeId(const AttributeId &attribId)
+
+{
+  return ATTRIB_UNKNOWN.getId();	// PackedDecode never needs to reinterpret an attribute
+}
+
 bool PackedDecode::readBool(void)
 
 {
@@ -691,9 +755,9 @@ bool PackedDecode::readBool(void)
   if ((header1 & HEADEREXTEND_MASK)!=0)
     getNextByte(curPos);
   uint1 typeByte = getNextByte(curPos);
+  attributeRead = true;
   if ((typeByte >> TYPECODE_SHIFT) != TYPECODE_BOOLEAN)
     throw DecoderError("Expecting boolean attribute");
-  attributeRead = true;
   return ((typeByte & LENGTHCODE_MASK) != 0);
 }
 
@@ -724,6 +788,7 @@ intb PackedDecode::readSignedInteger(void)
   }
   else {
     skipAttributeRemaining(typeByte);
+    attributeRead = true;
     throw DecoderError("Expecting signed integer attribute");
   }
   attributeRead = true;
@@ -735,6 +800,40 @@ intb PackedDecode::readSignedInteger(const AttributeId &attribId)
 {
   findMatchingAttribute(attribId);
   intb res = readSignedInteger();
+  curPos = startPos;
+  return res;
+}
+
+intb PackedDecode::readSignedIntegerExpectString(const string &expect,intb expectval)
+
+{
+  intb res;
+  Position tmpPos = curPos;
+  uint1 header1 = getNextByte(tmpPos);
+  if ((header1 & HEADEREXTEND_MASK)!=0)
+    getNextByte(tmpPos);
+  uint1 typeByte = getNextByte(tmpPos);
+  uint4 typeCode = typeByte >> TYPECODE_SHIFT;
+  if (typeCode == TYPECODE_STRING) {
+    string val = readString();
+    if (val != expect) {
+      ostringstream s;
+      s << "Expecting string \"" << expect << "\" but read \"" << val << "\"";
+      throw DecoderError(s.str());
+    }
+    res = expectval;
+  }
+  else {
+    res = readSignedInteger();
+  }
+  return res;
+}
+
+intb PackedDecode::readSignedIntegerExpectString(const AttributeId &attribId,const string &expect,intb expectval)
+
+{
+  findMatchingAttribute(attribId);
+  intb res = readSignedIntegerExpectString(expect,expectval);
   curPos = startPos;
   return res;
 }
@@ -753,6 +852,7 @@ uintb PackedDecode::readUnsignedInteger(void)
   }
   else {
     skipAttributeRemaining(typeByte);
+    attributeRead = true;
     throw DecoderError("Expecting unsigned integer attribute");
   }
   attributeRead = true;
@@ -778,6 +878,7 @@ string PackedDecode::readString(void)
   uint4 typeCode = typeByte >> TYPECODE_SHIFT;
   if (typeCode != TYPECODE_STRING) {
     skipAttributeRemaining(typeByte);
+    attributeRead = true;
     throw DecoderError("Expecting string attribute");
   }
   int4 length = readLengthCode(typeByte);
@@ -842,6 +943,7 @@ AddrSpace *PackedDecode::readSpace(void)
   }
   else {
     skipAttributeRemaining(typeByte);
+    attributeRead = true;
     throw DecoderError("Expecting space attribute");
   }
   attributeRead = true;
@@ -981,6 +1083,15 @@ void PackedEncode::writeString(const AttributeId &attribId,const string &val)
   outStream.write(val.c_str(), length);
 }
 
+void PackedEncode::writeStringIndexed(const AttributeId &attribId,uint4 index,const string &val)
+
+{
+  uint8 length = val.length();
+  writeHeader(ATTRIBUTE, attribId.getId() + index);
+  writeInteger((TYPECODE_STRING << TYPECODE_SHIFT), length);
+  outStream.write(val.c_str(), length);
+}
+
 void PackedEncode::writeSpace(const AttributeId &attribId,const AddrSpace *spc)
 
 {
@@ -1035,8 +1146,9 @@ AttributeId ATTRIB_TYPELOCK = AttributeId("typelock",23);
 AttributeId ATTRIB_VAL = AttributeId("val",24);
 AttributeId ATTRIB_VALUE = AttributeId("value",25);
 AttributeId ATTRIB_WORDSIZE = AttributeId("wordsize",26);
+AttributeId ATTRIB_STORAGE = AttributeId("storage",149);
 
-AttributeId ATTRIB_UNKNOWN = AttributeId("XMLunknown",149); // Number serves as next open index
+AttributeId ATTRIB_UNKNOWN = AttributeId("XMLunknown",150); // Number serves as next open index
 
 ElementId ELEM_DATA = ElementId("data",1);
 ElementId ELEM_INPUT = ElementId("input",2);
@@ -1049,4 +1161,6 @@ ElementId ELEM_VAL = ElementId("val",8);
 ElementId ELEM_VALUE = ElementId("value",9);
 ElementId ELEM_VOID = ElementId("void",10);
 
-ElementId ELEM_UNKNOWN = ElementId("XMLunknown",270); // Number serves as next open index
+ElementId ELEM_UNKNOWN = ElementId("XMLunknown",285); // Number serves as next open index
+
+} // End namespace ghidra

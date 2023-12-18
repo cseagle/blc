@@ -63,18 +63,19 @@
 /* Pull parsers.  */
 #define YYPULL 1
 
-
+/* Substitute the type names.  */
+#define YYSTYPE         XMLSTYPE
 /* Substitute the variable and function names.  */
-#define yyparse         xml_parse
-#define yylex           xml_lex
-#define yyerror         xml_error
-#define yydebug         xml_debug
-#define yynerrs         xml_nerrs
-#define yylval          xml_lval
-#define yychar          xml_char
+#define yyparse         xmlparse
+#define yylex           xmllex
+#define yyerror         xmlerror
+#define yydebug         xmldebug
+#define yynerrs         xmlnerrs
+#define yylval          xmllval
+#define yychar          xmlchar
 
 /* First part of user prologue.  */
-#line 16 "xml.y"
+#line 17 "xml.y"
 
 #include "xml.hh"
 // CharData mode   look for '<' '&' or "]]>"
@@ -86,6 +87,8 @@
 
 #include <iostream>
 #include <string>
+
+namespace ghidra {
 
 string Attributes::bogus_uri("http://unused.uri");
 
@@ -168,16 +171,16 @@ struct NameValue {
   string *value;	///< The value
 };
 
-extern int yylex(void);							///< Interface to the scanner
-extern int yyerror(const char *str);			///< Interface for registering an error in parsing
+extern int xmllex(void);				///< Interface to the scanner
+extern int xmlerror(const char *str);			///< Interface for registering an error in parsing
 extern void print_content(const string &str);	///< Send character data to the ContentHandler
 extern int4 convertEntityRef(const string &ref);	///< Convert an XML entity to its equivalent character
 extern int4 convertCharRef(const string &ref);	///< Convert an XML character reference to its equivalent character
 static XmlScan *global_scan;					///< Global reference to the scanner
 static ContentHandler *handler;					///< Global reference to the content handler
-extern int yydebug;								///< Debug mode
 
-#line 181 "xml.tab.cc"
+
+#line 184 "xml.tab.cc"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -202,22 +205,30 @@ extern int yydebug;								///< Debug mode
 
 
 /* Debug traces.  */
-#ifndef YYDEBUG
-# define YYDEBUG 0
-#endif
+#ifndef XMLDEBUG
+# if defined YYDEBUG
 #if YYDEBUG
-extern int xml_debug;
+#   define XMLDEBUG 1
+#  else
+#   define XMLDEBUG 0
+#  endif
+# else /* ! defined YYDEBUG */
+#  define XMLDEBUG 0
+# endif /* ! defined YYDEBUG */
+#endif  /* ! defined XMLDEBUG */
+#if XMLDEBUG
+extern int xmldebug;
 #endif
 
 /* Token kinds.  */
-#ifndef YYTOKENTYPE
-# define YYTOKENTYPE
-  enum yytokentype
+#ifndef XMLTOKENTYPE
+# define XMLTOKENTYPE
+  enum xmltokentype
   {
-    YYEMPTY = -2,
-    YYEOF = 0,                     /* "end of file"  */
-    YYerror = 256,                 /* error  */
-    YYUNDEF = 257,                 /* "invalid token"  */
+    XMLEMPTY = -2,
+    XMLEOF = 0,                    /* "end of file"  */
+    XMLerror = 256,                /* error  */
+    XMLUNDEF = 257,                /* "invalid token"  */
     CHARDATA = 258,                /* CHARDATA  */
     CDATA = 259,                   /* CDATA  */
     ATTVALUE = 260,                /* ATTVALUE  */
@@ -228,33 +239,33 @@ extern int xml_debug;
     ELEMBRACE = 265,               /* ELEMBRACE  */
     COMMBRACE = 266                /* COMMBRACE  */
   };
-  typedef enum yytokentype yytoken_kind_t;
+  typedef enum xmltokentype xmltoken_kind_t;
 #endif
 
 /* Value type.  */
-#if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-union YYSTYPE
+#if ! defined XMLSTYPE && ! defined XMLSTYPE_IS_DECLARED
+union XMLSTYPE
 {
-#line 119 "xml.y"
+#line 122 "xml.y"
 
   int4 i;
   string *str;
   Attributes *attr;
   NameValue *pair;
 
-#line 246 "xml.tab.cc"
+#line 257 "xml.tab.cc"
 
 };
-typedef union YYSTYPE YYSTYPE;
-# define YYSTYPE_IS_TRIVIAL 1
-# define YYSTYPE_IS_DECLARED 1
+typedef union XMLSTYPE XMLSTYPE;
+# define XMLSTYPE_IS_TRIVIAL 1
+# define XMLSTYPE_IS_DECLARED 1
 #endif
 
 
-extern YYSTYPE xml_lval;
+extern XMLSTYPE xmllval;
 
 
-int xml_parse (void);
+int xmlparse (void);
 
 
 
@@ -615,7 +626,7 @@ void free (void *); /* INFRINGES ON USER NAME SPACE */
 
 #if (! defined yyoverflow \
      && (! defined __cplusplus \
-         || (defined YYSTYPE_IS_TRIVIAL && YYSTYPE_IS_TRIVIAL)))
+         || (defined XMLSTYPE_IS_TRIVIAL && XMLSTYPE_IS_TRIVIAL)))
 
 /* A type that is properly aligned for any stack member.  */
 union yyalloc
@@ -731,25 +742,25 @@ static const yytype_int8 yytranslate[] =
        5,     6,     7,     8,     9,    10,    11
 };
 
-#if YYDEBUG
+#if XMLDEBUG
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,   135,   135,   136,   137,   138,   139,   140,   141,   142,
-     144,   145,   146,   147,   148,   149,   150,   151,   152,   153,
-     154,   155,   156,   157,   158,   160,   161,   162,   163,   164,
-     165,   166,   168,   169,   170,   171,   172,   173,   174,   176,
-     177,   178,   179,   180,   181,   182,   184,   185,   187,   188,
-     189,   190,   192,   193,   194,   195,   196,   197,   199,   200,
-     201,   202,   203,   204,   205,   207,   208,   210,   211,   212,
-     213
+       0,   141,   141,   142,   143,   144,   145,   146,   147,   148,
+     150,   151,   152,   153,   154,   155,   156,   157,   158,   159,
+     160,   161,   162,   163,   164,   166,   167,   168,   169,   170,
+     171,   172,   174,   175,   176,   177,   178,   179,   180,   182,
+     183,   184,   185,   186,   187,   188,   190,   191,   193,   194,
+     195,   196,   198,   199,   200,   201,   202,   203,   205,   206,
+     207,   208,   209,   210,   211,   213,   214,   216,   217,   218,
+     219
 };
 #endif
 
 /** Accessing symbol of state STATE.  */
 #define YY_ACCESSING_SYMBOL(State) YY_CAST (yysymbol_kind_t, yystos[State])
 
-#if YYDEBUG || 0
+#if XMLDEBUG || 0
 /* The user-facing name of the symbol whose (internal) number is
    YYSYMBOL.  No bounds checking.  */
 static const char *yysymbol_name (yysymbol_kind_t yysymbol) YY_ATTRIBUTE_UNUSED;
@@ -958,7 +969,7 @@ static const yytype_int8 yyr2[] =
 enum { YYENOMEM = -2 };
 
 #define yyerrok         (yyerrstatus = 0)
-#define yyclearin       (yychar = YYEMPTY)
+#define yyclearin       (yychar = XMLEMPTY)
 
 #define YYACCEPT        goto yyacceptlab
 #define YYABORT         goto yyabortlab
@@ -970,7 +981,7 @@ enum { YYENOMEM = -2 };
 
 #define YYBACKUP(Token, Value)                                    \
   do                                                              \
-    if (yychar == YYEMPTY)                                        \
+    if (yychar == XMLEMPTY)                                        \
       {                                                           \
         yychar = (Token);                                         \
         yylval = (Value);                                         \
@@ -986,12 +997,12 @@ enum { YYENOMEM = -2 };
   while (0)
 
 /* Backward compatibility with an undocumented macro.
-   Use YYerror or YYUNDEF. */
-#define YYERRCODE YYUNDEF
+   Use XMLerror or XMLUNDEF. */
+#define YYERRCODE XMLUNDEF
 
 
 /* Enable debugging if requested.  */
-#if YYDEBUG
+#if XMLDEBUG
 
 # ifndef YYFPRINTF
 #  include <stdio.h> /* INFRINGES ON USER NAME SPACE */
@@ -1109,12 +1120,12 @@ do {                                    \
 /* Nonzero means print parse trace.  It is left uninitialized so that
    multiple parsers can coexist.  */
 int yydebug;
-#else /* !YYDEBUG */
+#else /* !XMLDEBUG */
 # define YYDPRINTF(Args) ((void) 0)
 # define YY_SYMBOL_PRINT(Title, Kind, Value, Location)
 # define YY_STACK_PRINT(Bottom, Top)
 # define YY_REDUCE_PRINT(Rule)
-#endif /* !YYDEBUG */
+#endif /* !XMLDEBUG */
 
 
 /* YYINITDEPTH -- initial size of the parser's stacks.  */
@@ -1152,7 +1163,137 @@ yydestruct (const char *yymsg,
   YY_SYMBOL_PRINT (yymsg, yykind, yyvaluep, yylocationp);
 
   YY_IGNORE_MAYBE_UNINITIALIZED_BEGIN
-  YY_USE (yykind);
+  switch (yykind)
+    {
+    case YYSYMBOL_CHARDATA: /* CHARDATA  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1172 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_CDATA: /* CDATA  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1178 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_ATTVALUE: /* ATTVALUE  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1184 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_COMMENT: /* COMMENT  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1190 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_CHARREF: /* CHARREF  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1196 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_NAME: /* NAME  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1202 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_SNAME: /* SNAME  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1208 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_ELEMBRACE: /* ELEMBRACE  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1214 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_COMMBRACE: /* COMMBRACE  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1220 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_attsinglemid: /* attsinglemid  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1226 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_attdoublemid: /* attdoublemid  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1232 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_AttValue: /* AttValue  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1238 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_CDSect: /* CDSect  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1244 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_STag: /* STag  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).attr); }
+#line 1250 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_EmptyElemTag: /* EmptyElemTag  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).attr); }
+#line 1256 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_stagstart: /* stagstart  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).attr); }
+#line 1262 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_SAttribute: /* SAttribute  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).pair); }
+#line 1268 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_ETag: /* ETag  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1274 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_Reference: /* Reference  */
+#line 137 "xml.y"
+            { }
+#line 1280 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_CharRef: /* CharRef  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1286 "xml.tab.cc"
+        break;
+
+    case YYSYMBOL_EntityRef: /* EntityRef  */
+#line 138 "xml.y"
+            { delete ((*yyvaluep).str); }
+#line 1292 "xml.tab.cc"
+        break;
+
+      default:
+        break;
+    }
   YY_IGNORE_MAYBE_UNINITIALIZED_END
 }
 
@@ -1214,7 +1355,7 @@ yyparse (void)
 
   YYDPRINTF ((stderr, "Starting parse\n"));
 
-  yychar = YYEMPTY; /* Cause a token to be read.  */
+  yychar = XMLEMPTY; /* Cause a token to be read.  */
 
   goto yysetstate;
 
@@ -1324,25 +1465,25 @@ yybackup:
   /* Not known => get a lookahead token if don't already have one.  */
 
   /* YYCHAR is either empty, or end-of-input, or a valid lookahead.  */
-  if (yychar == YYEMPTY)
+  if (yychar == XMLEMPTY)
     {
       YYDPRINTF ((stderr, "Reading a token\n"));
       yychar = yylex ();
     }
 
-  if (yychar <= YYEOF)
+  if (yychar <= XMLEOF)
     {
-      yychar = YYEOF;
+      yychar = XMLEOF;
       yytoken = YYSYMBOL_YYEOF;
       YYDPRINTF ((stderr, "Now at end of input.\n"));
     }
-  else if (yychar == YYerror)
+  else if (yychar == XMLerror)
     {
       /* The scanner already issued an error message, process directly
          to error recovery.  But do not keep the error token as
          lookahead, it is too special and may lead us to an endless
          loop in error recovery. */
-      yychar = YYUNDEF;
+      yychar = XMLUNDEF;
       yytoken = YYSYMBOL_YYerror;
       goto yyerrlab1;
     }
@@ -1379,7 +1520,7 @@ yybackup:
   YY_IGNORE_MAYBE_UNINITIALIZED_END
 
   /* Discard the shifted token.  */
-  yychar = YYEMPTY;
+  yychar = XMLEMPTY;
   goto yynewstate;
 
 
@@ -1415,259 +1556,259 @@ yyreduce:
   switch (yyn)
     {
   case 10: /* attsinglemid: '\''  */
-#line 144 "xml.y"
+#line 150 "xml.y"
                    { (yyval.str) = new string; global_scan->setmode(XmlScan::AttValueSingleMode); }
-#line 1421 "xml.tab.cc"
+#line 1562 "xml.tab.cc"
     break;
 
   case 11: /* attsinglemid: attsinglemid ATTVALUE  */
-#line 145 "xml.y"
+#line 151 "xml.y"
                                       { (yyval.str) = (yyvsp[-1].str); *(yyval.str) += *(yyvsp[0].str); delete (yyvsp[0].str); global_scan->setmode(XmlScan::AttValueSingleMode); }
-#line 1427 "xml.tab.cc"
+#line 1568 "xml.tab.cc"
     break;
 
   case 12: /* attsinglemid: attsinglemid Reference  */
-#line 146 "xml.y"
+#line 152 "xml.y"
                                        { (yyval.str) = (yyvsp[-1].str); *(yyval.str) += (yyvsp[0].i); global_scan->setmode(XmlScan::AttValueSingleMode); }
-#line 1433 "xml.tab.cc"
+#line 1574 "xml.tab.cc"
     break;
 
   case 13: /* attdoublemid: '"'  */
-#line 147 "xml.y"
+#line 153 "xml.y"
                   { (yyval.str) = new string; global_scan->setmode(XmlScan::AttValueDoubleMode); }
-#line 1439 "xml.tab.cc"
+#line 1580 "xml.tab.cc"
     break;
 
   case 14: /* attdoublemid: attdoublemid ATTVALUE  */
-#line 148 "xml.y"
+#line 154 "xml.y"
                                       { (yyval.str) = (yyvsp[-1].str); *(yyval.str) += *(yyvsp[0].str); delete (yyvsp[0].str); global_scan->setmode(XmlScan::AttValueDoubleMode); }
-#line 1445 "xml.tab.cc"
+#line 1586 "xml.tab.cc"
     break;
 
   case 15: /* attdoublemid: attdoublemid Reference  */
-#line 149 "xml.y"
+#line 155 "xml.y"
                                        { (yyval.str) = (yyvsp[-1].str); *(yyval.str) += (yyvsp[0].i); global_scan->setmode(XmlScan::AttValueDoubleMode); }
-#line 1451 "xml.tab.cc"
+#line 1592 "xml.tab.cc"
     break;
 
   case 16: /* AttValue: attsinglemid '\''  */
-#line 150 "xml.y"
+#line 156 "xml.y"
                             { (yyval.str) = (yyvsp[-1].str); }
-#line 1457 "xml.tab.cc"
+#line 1598 "xml.tab.cc"
     break;
 
   case 17: /* AttValue: attdoublemid '"'  */
-#line 151 "xml.y"
+#line 157 "xml.y"
                              { (yyval.str) = (yyvsp[-1].str); }
-#line 1463 "xml.tab.cc"
+#line 1604 "xml.tab.cc"
     break;
 
   case 18: /* elemstart: ELEMBRACE  */
-#line 152 "xml.y"
+#line 158 "xml.y"
                      { global_scan->setmode(XmlScan::NameMode); delete (yyvsp[0].str); }
-#line 1469 "xml.tab.cc"
+#line 1610 "xml.tab.cc"
     break;
 
   case 19: /* commentstart: COMMBRACE '!' '-' '-'  */
-#line 153 "xml.y"
+#line 159 "xml.y"
                                     { global_scan->setmode(XmlScan::CommentMode); delete (yyvsp[-3].str); }
-#line 1475 "xml.tab.cc"
+#line 1616 "xml.tab.cc"
     break;
 
   case 20: /* Comment: commentstart COMMENT '-' '-' '>'  */
-#line 154 "xml.y"
+#line 160 "xml.y"
                                           { delete (yyvsp[-3].str); }
-#line 1481 "xml.tab.cc"
+#line 1622 "xml.tab.cc"
     break;
 
   case 21: /* PI: COMMBRACE '?'  */
-#line 155 "xml.y"
+#line 161 "xml.y"
                   { delete (yyvsp[-1].str); yyerror("Processing instructions are not supported"); YYERROR; }
-#line 1487 "xml.tab.cc"
+#line 1628 "xml.tab.cc"
     break;
 
   case 22: /* CDSect: CDStart CDATA CDEnd  */
-#line 156 "xml.y"
+#line 162 "xml.y"
                             { (yyval.str) = (yyvsp[-1].str); }
-#line 1493 "xml.tab.cc"
+#line 1634 "xml.tab.cc"
     break;
 
   case 23: /* CDStart: COMMBRACE '!' '[' 'C' 'D' 'A' 'T' 'A' '['  */
-#line 157 "xml.y"
+#line 163 "xml.y"
                                                    { global_scan->setmode(XmlScan::CDataMode); delete (yyvsp[-8].str); }
-#line 1499 "xml.tab.cc"
+#line 1640 "xml.tab.cc"
     break;
 
   case 32: /* doctypedecl: COMMBRACE '!' 'D' 'O' 'C' 'T' 'Y' 'P' 'E'  */
-#line 168 "xml.y"
+#line 174 "xml.y"
                                                        { delete (yyvsp[-8].str); yyerror("DTD's not supported"); YYERROR; }
-#line 1505 "xml.tab.cc"
+#line 1646 "xml.tab.cc"
     break;
 
   case 39: /* VersionInfo: S 'v' 'e' 'r' 's' 'i' 'o' 'n' Eq AttValue  */
-#line 176 "xml.y"
+#line 182 "xml.y"
                                                        { handler->setVersion(*(yyvsp[0].str)); delete (yyvsp[0].str); }
-#line 1511 "xml.tab.cc"
+#line 1652 "xml.tab.cc"
     break;
 
   case 40: /* EncodingDecl: S 'e' 'n' 'c' 'o' 'd' 'i' 'n' 'g' Eq AttValue  */
-#line 177 "xml.y"
+#line 183 "xml.y"
                                                             { handler->setEncoding(*(yyvsp[0].str)); delete (yyvsp[0].str); }
-#line 1517 "xml.tab.cc"
+#line 1658 "xml.tab.cc"
     break;
 
   case 46: /* element: EmptyElemTag  */
-#line 184 "xml.y"
+#line 190 "xml.y"
                       { handler->endElement((yyvsp[0].attr)->getelemURI(),(yyvsp[0].attr)->getelemName(),(yyvsp[0].attr)->getelemName()); delete (yyvsp[0].attr); }
-#line 1523 "xml.tab.cc"
+#line 1664 "xml.tab.cc"
     break;
 
   case 47: /* element: STag content ETag  */
-#line 185 "xml.y"
+#line 191 "xml.y"
                              { handler->endElement((yyvsp[-2].attr)->getelemURI(),(yyvsp[-2].attr)->getelemName(),(yyvsp[-2].attr)->getelemName()); delete (yyvsp[-2].attr); delete (yyvsp[0].str); }
-#line 1529 "xml.tab.cc"
+#line 1670 "xml.tab.cc"
     break;
 
   case 48: /* STag: stagstart '>'  */
-#line 187 "xml.y"
+#line 193 "xml.y"
                     { handler->startElement((yyvsp[-1].attr)->getelemURI(),(yyvsp[-1].attr)->getelemName(),(yyvsp[-1].attr)->getelemName(),*(yyvsp[-1].attr)); (yyval.attr) = (yyvsp[-1].attr); }
-#line 1535 "xml.tab.cc"
+#line 1676 "xml.tab.cc"
     break;
 
   case 49: /* STag: stagstart S '>'  */
-#line 188 "xml.y"
+#line 194 "xml.y"
                         { handler->startElement((yyvsp[-2].attr)->getelemURI(),(yyvsp[-2].attr)->getelemName(),(yyvsp[-2].attr)->getelemName(),*(yyvsp[-2].attr)); (yyval.attr) = (yyvsp[-2].attr); }
-#line 1541 "xml.tab.cc"
+#line 1682 "xml.tab.cc"
     break;
 
   case 50: /* EmptyElemTag: stagstart '/' '>'  */
-#line 189 "xml.y"
+#line 195 "xml.y"
                                 { handler->startElement((yyvsp[-2].attr)->getelemURI(),(yyvsp[-2].attr)->getelemName(),(yyvsp[-2].attr)->getelemName(),*(yyvsp[-2].attr)); (yyval.attr) = (yyvsp[-2].attr); }
-#line 1547 "xml.tab.cc"
+#line 1688 "xml.tab.cc"
     break;
 
   case 51: /* EmptyElemTag: stagstart S '/' '>'  */
-#line 190 "xml.y"
+#line 196 "xml.y"
                                     { handler->startElement((yyvsp[-3].attr)->getelemURI(),(yyvsp[-3].attr)->getelemName(),(yyvsp[-3].attr)->getelemName(),*(yyvsp[-3].attr)); (yyval.attr) = (yyvsp[-3].attr); }
-#line 1553 "xml.tab.cc"
+#line 1694 "xml.tab.cc"
     break;
 
   case 52: /* stagstart: elemstart NAME  */
-#line 192 "xml.y"
+#line 198 "xml.y"
                           { (yyval.attr) = new Attributes((yyvsp[0].str)); global_scan->setmode(XmlScan::SNameMode); }
-#line 1559 "xml.tab.cc"
+#line 1700 "xml.tab.cc"
     break;
 
   case 53: /* stagstart: stagstart SAttribute  */
-#line 193 "xml.y"
+#line 199 "xml.y"
                                   { (yyval.attr) = (yyvsp[-1].attr); (yyval.attr)->add_attribute( (yyvsp[0].pair)->name, (yyvsp[0].pair)->value); delete (yyvsp[0].pair); global_scan->setmode(XmlScan::SNameMode); }
-#line 1565 "xml.tab.cc"
+#line 1706 "xml.tab.cc"
     break;
 
   case 54: /* SAttribute: SNAME Eq AttValue  */
-#line 194 "xml.y"
+#line 200 "xml.y"
                               { (yyval.pair) = new NameValue; (yyval.pair)->name = (yyvsp[-2].str); (yyval.pair)->value = (yyvsp[0].str); }
-#line 1571 "xml.tab.cc"
+#line 1712 "xml.tab.cc"
     break;
 
   case 55: /* etagbrace: COMMBRACE '/'  */
-#line 195 "xml.y"
+#line 201 "xml.y"
                          { global_scan->setmode(XmlScan::NameMode); delete (yyvsp[-1].str); }
-#line 1577 "xml.tab.cc"
+#line 1718 "xml.tab.cc"
     break;
 
   case 56: /* ETag: etagbrace NAME '>'  */
-#line 196 "xml.y"
+#line 202 "xml.y"
                          { (yyval.str) = (yyvsp[-1].str); }
-#line 1583 "xml.tab.cc"
+#line 1724 "xml.tab.cc"
     break;
 
   case 57: /* ETag: etagbrace NAME S '>'  */
-#line 197 "xml.y"
+#line 203 "xml.y"
                              { (yyval.str) = (yyvsp[-2].str); }
-#line 1589 "xml.tab.cc"
+#line 1730 "xml.tab.cc"
     break;
 
   case 58: /* content: %empty  */
-#line 199 "xml.y"
+#line 205 "xml.y"
          { global_scan->setmode(XmlScan::CharDataMode); }
-#line 1595 "xml.tab.cc"
+#line 1736 "xml.tab.cc"
     break;
 
   case 59: /* content: content CHARDATA  */
-#line 200 "xml.y"
+#line 206 "xml.y"
                             { print_content( *(yyvsp[0].str) ); delete (yyvsp[0].str); global_scan->setmode(XmlScan::CharDataMode); }
-#line 1601 "xml.tab.cc"
+#line 1742 "xml.tab.cc"
     break;
 
   case 60: /* content: content element  */
-#line 201 "xml.y"
+#line 207 "xml.y"
                            { global_scan->setmode(XmlScan::CharDataMode); }
-#line 1607 "xml.tab.cc"
+#line 1748 "xml.tab.cc"
     break;
 
   case 61: /* content: content Reference  */
-#line 202 "xml.y"
+#line 208 "xml.y"
                              { string *tmp=new string(); *tmp += (yyvsp[0].i); print_content(*tmp); delete tmp; global_scan->setmode(XmlScan::CharDataMode); }
-#line 1613 "xml.tab.cc"
+#line 1754 "xml.tab.cc"
     break;
 
   case 62: /* content: content CDSect  */
-#line 203 "xml.y"
+#line 209 "xml.y"
                           { print_content( *(yyvsp[0].str) ); delete (yyvsp[0].str); global_scan->setmode(XmlScan::CharDataMode); }
-#line 1619 "xml.tab.cc"
+#line 1760 "xml.tab.cc"
     break;
 
   case 63: /* content: content PI  */
-#line 204 "xml.y"
+#line 210 "xml.y"
                       { global_scan->setmode(XmlScan::CharDataMode); }
-#line 1625 "xml.tab.cc"
+#line 1766 "xml.tab.cc"
     break;
 
   case 64: /* content: content Comment  */
-#line 205 "xml.y"
+#line 211 "xml.y"
                            { global_scan->setmode(XmlScan::CharDataMode); }
-#line 1631 "xml.tab.cc"
+#line 1772 "xml.tab.cc"
     break;
 
   case 65: /* Reference: EntityRef  */
-#line 207 "xml.y"
+#line 213 "xml.y"
                      { (yyval.i) = convertEntityRef(*(yyvsp[0].str)); delete (yyvsp[0].str); }
-#line 1637 "xml.tab.cc"
+#line 1778 "xml.tab.cc"
     break;
 
   case 66: /* Reference: CharRef  */
-#line 208 "xml.y"
+#line 214 "xml.y"
                      { (yyval.i) = convertCharRef(*(yyvsp[0].str)); delete (yyvsp[0].str); }
-#line 1643 "xml.tab.cc"
+#line 1784 "xml.tab.cc"
     break;
 
   case 67: /* refstart: '&'  */
-#line 210 "xml.y"
+#line 216 "xml.y"
               { global_scan->setmode(XmlScan::NameMode); }
-#line 1649 "xml.tab.cc"
+#line 1790 "xml.tab.cc"
     break;
 
   case 68: /* charrefstart: refstart '#'  */
-#line 211 "xml.y"
+#line 217 "xml.y"
                            { global_scan->setmode(XmlScan::CharRefMode); }
-#line 1655 "xml.tab.cc"
+#line 1796 "xml.tab.cc"
     break;
 
   case 69: /* CharRef: charrefstart CHARREF ';'  */
-#line 212 "xml.y"
+#line 218 "xml.y"
                                   { (yyval.str) = (yyvsp[-1].str); }
-#line 1661 "xml.tab.cc"
+#line 1802 "xml.tab.cc"
     break;
 
   case 70: /* EntityRef: refstart NAME ';'  */
-#line 213 "xml.y"
+#line 219 "xml.y"
                              { (yyval.str) = (yyvsp[-1].str); }
-#line 1667 "xml.tab.cc"
+#line 1808 "xml.tab.cc"
     break;
 
 
-#line 1671 "xml.tab.cc"
+#line 1812 "xml.tab.cc"
 
       default: break;
     }
@@ -1709,7 +1850,7 @@ yyreduce:
 yyerrlab:
   /* Make sure we have latest lookahead translation.  See comments at
      user semantic actions for why this is necessary.  */
-  yytoken = yychar == YYEMPTY ? YYSYMBOL_YYEMPTY : YYTRANSLATE (yychar);
+  yytoken = yychar == XMLEMPTY ? YYSYMBOL_YYEMPTY : YYTRANSLATE (yychar);
   /* If not already recovering from an error, report this error.  */
   if (!yyerrstatus)
     {
@@ -1722,17 +1863,17 @@ yyerrlab:
       /* If just tried and failed to reuse lookahead token after an
          error, discard it.  */
 
-      if (yychar <= YYEOF)
+      if (yychar <= XMLEOF)
         {
           /* Return failure if at end of input.  */
-          if (yychar == YYEOF)
+          if (yychar == XMLEOF)
             YYABORT;
         }
       else
         {
           yydestruct ("Error: discarding",
                       yytoken, &yylval);
-          yychar = YYEMPTY;
+          yychar = XMLEMPTY;
         }
     }
 
@@ -1834,7 +1975,7 @@ yyexhaustedlab:
 | yyreturnlab -- parsing is finished, clean up and return.  |
 `----------------------------------------------------------*/
 yyreturnlab:
-  if (yychar != YYEMPTY)
+  if (yychar != XMLEMPTY)
     {
       /* Make sure we have latest lookahead translation.  See comments at
          user semantic actions for why this is necessary.  */
@@ -1860,7 +2001,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 214 "xml.y"
+#line 220 "xml.y"
 
 
 XmlScan::XmlScan(istream &t) : s(t)
@@ -2145,7 +2286,7 @@ int4 convertCharRef(const string &ref)
   return val;
 }
 
-int yylex(void)
+int xmllex(void)
 
 {
   int res = global_scan->nexttoken();
@@ -2154,7 +2295,7 @@ int yylex(void)
   return res;
 }
 
-int yyerror(const char *str)
+int xmlerror(const char *str)
 
 {
   handler->setError(str);
@@ -2292,3 +2433,5 @@ void xml_escape(ostream &s,const char *str)
     str++;
   }
 }
+
+} // End namespace ghidra

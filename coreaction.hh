@@ -21,12 +21,14 @@
 /// (if they do they must check the covers themselves)
 
 
-#ifndef __CORE_ACTION__
-#define __CORE_ACTION__
+#ifndef __COREACTION_HH__
+#define __COREACTION_HH__
 
 #include "ruleaction.hh"
 #include "blockaction.hh"
 #include "funcdata.hh"
+
+namespace ghidra {
 
 /// \brief Gather raw p-code for a function.
 class ActionStart : public Action {
@@ -187,6 +189,7 @@ class ActionConstantPtr : public Action {
   int4 localcount;		///< Number of passes made for this function
   static AddrSpace *searchForSpaceAttribute(Varnode *vn,PcodeOp *op);
   static AddrSpace *selectInferSpace(Varnode *vn,PcodeOp *op,const vector<AddrSpace *> &spaceList);
+  static bool checkCopy(PcodeOp *op,Funcdata &data);
   static SymbolEntry *isPointer(AddrSpace *spc,Varnode *vn,PcodeOp *op,int4 slot,
 				Address &rampoint,uintb &fullEncoding,Funcdata &data);
 public:
@@ -316,7 +319,7 @@ public:
 /// immediately.
 class ActionSetCasts : public Action {
   static void checkPointerIssues(PcodeOp *op,Varnode *vn,Funcdata &data);
-  static bool testStructOffset0(Varnode *vn,PcodeOp *op,Datatype *ct,CastStrategy *castStrategy);
+  static bool testStructOffset0(Datatype *reqtype,Datatype *curtype,CastStrategy *castStrategy);
   static bool tryResolutionAdjustment(PcodeOp *op,int4 slot,Funcdata &data);
   static bool isOpIdentical(Datatype *ct1,Datatype *ct2);
   static int4 resolveUnion(PcodeOp *op,int4 slot,Funcdata &data);
@@ -364,7 +367,7 @@ public:
     return new ActionMergeRequired(getGroup());
   }
   virtual int4 apply(Funcdata &data) { 
-    data.getMerge().mergeAddrTied(); data.getMerge().mergeMarker(); return 0; }
+    data.getMerge().mergeAddrTied(); data.getMerge().groupPartials(); data.getMerge().mergeMarker(); return 0; }
 };
 
 /// \brief Try to merge an op's input Varnode to its output, if they are at the same storage location.
@@ -565,6 +568,14 @@ public:
 
 /// \brief Propagate conditional constants
 class ActionConditionalConst : public Action {
+  static void clearMarks(const vector<PcodeOp *> &opList);
+  static void collectReachable(Varnode *vn,vector<PcodeOpNode> &phiNodeEdges,vector<PcodeOp *> &reachable);
+  static bool flowToAlternatePath(PcodeOp *op);
+  static bool flowTogether(const vector<PcodeOpNode> &edges,int4 i,vector<int4> &result);
+  static Varnode *placeCopy(PcodeOp *op,BlockBasic *bl,Varnode *constVn,Funcdata &data);
+  static void placeMultipleConstants(vector<PcodeOpNode> &phiNodeEdges,vector<int4> &marks,Varnode *constVn,Funcdata &data);
+  void handlePhiNodes(Varnode *varVn,Varnode *constVn,vector<PcodeOpNode> &phiNodeEdges,Funcdata &data);
+  void propagateConstant(Varnode *varVn,Varnode *constVn,FlowBlock *constBlock,bool useMultiequal,Funcdata &data);
 public:
   ActionConditionalConst(const string &g) : Action(0,"condconst",g) {}	///< Constructor
   virtual Action *clone(const ActionGroupList &grouplist) const {
@@ -572,7 +583,6 @@ public:
     return new ActionConditionalConst(getGroup());
   }
   virtual int4 apply(Funcdata &data);
-  void propagateConstant(Varnode *varVn,Varnode *constVn,FlowBlock *constBlock,Funcdata &data);
 };
 
 /// \brief Normalize jump-table construction.
@@ -822,6 +832,8 @@ public:
 /// This produces on intermediate view of symbols on the stack.
 class ActionRestructureVarnode : public Action {
   int4 numpass;			///< Number of passes performed for this function
+  static void protectSwitchPathIndirects(PcodeOp *op);	///< Protect path to the given switch from INDIRECT collapse
+  static void protectSwitchPaths(Funcdata &data);	///< Look for switches and protect path of switch variable
 public:
   ActionRestructureVarnode(const string &g) : Action(0,"restructure_varnode",g) {}	///< Constructor
   virtual void reset(Funcdata &data) { numpass = 0; }
@@ -1081,4 +1093,5 @@ public:
 inline bool TermOrder::additiveCompare(const AdditiveEdge *op1,const AdditiveEdge *op2) {
     return (-1 == op1->getVarnode()->termOrder(op2->getVarnode())); }
 
+} // End namespace ghidra
 #endif

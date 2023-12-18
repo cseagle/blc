@@ -13,14 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef __CPUI_MARSHAL__
-#define __CPUI_MARSHAL__
+#ifndef __MARSHAL_HH__
+#define __MARSHAL_HH__
 
 #include "xml.hh"
 #include <list>
 #include <unordered_map>
 
-using namespace std;
+namespace ghidra {
+
+using std::list;
+using std::unordered_map;
 
 /// \brief An annotation for a data element to being transferred to/from a stream
 ///
@@ -151,6 +154,15 @@ public:
   /// \return the id of the next attribute or 0
   virtual uint4 getNextAttributeId(void)=0;
 
+  /// \brief Get the id for the (current) attribute, assuming it is indexed
+  ///
+  /// Assuming the previous call to getNextAttributeId() returned the id of ATTRIB_UNKNOWN,
+  /// reinterpret the attribute as being an indexed form of the given attribute. If the attribute
+  /// matches, return this indexed id, otherwise return ATTRIB_UNKNOWN.
+  /// \param attribId is the attribute being indexed
+  /// \return the indexed id or ATTRIB_UNKNOWN
+  virtual uint4 getIndexedAttributeId(const AttributeId &attribId)=0;
+
   /// \brief Reset attribute traversal for the current element
   ///
   /// Attributes for a single element can be traversed more than once using the getNextAttributeId method.
@@ -187,6 +199,29 @@ public:
   /// \param attribId is the specific attribute id to match
   /// \return the signed integer value
   virtual intb readSignedInteger(const AttributeId &attribId)=0;
+
+  /// \brief Parse the current attribute as either a signed integer value or a string.
+  ///
+  /// If the attribute is an integer, its value is returned. If the attribute is a string, it must match an
+  /// expected string passed to the method, and a predetermined integer value associated with the string is returned.
+  /// If the attribute neither matches the expected string nor is an integer, the return value is undefined.
+  /// \param expect is the string value to expect if the attribute is encoded as a string
+  /// \param expectval is the integer value to return if the attribute matches the expected string
+  /// \return the encoded integer or the integer value associated with the expected string
+  virtual intb readSignedIntegerExpectString(const string &expect,intb expectval)=0;
+
+  /// \brief Find and parse a specific attribute in the current element as either a signed integer or a string.
+  ///
+  /// If the attribute is an integer, its value is parsed and returned.
+  /// If the attribute is encoded as a string, it must match an expected string passed to this method.
+  /// In this case, a predetermined integer value is passed back, indicating a matching string was parsed.
+  /// If the attribute neither matches the expected string nor is an integer, the return value is undefined.
+  /// If there is no attribute matching the id, an exception is thrown.
+  /// \param attribId is the specific attribute id to match
+  /// \param expect is the string to expect, if the attribute is not encoded as an integer
+  /// \param expectval is the integer value to return if the attribute matches the expected string
+  /// \return the encoded integer or the integer value associated with the expected string
+  virtual intb readSignedIntegerExpectString(const AttributeId &attribId,const string &expect,intb expectval)=0;
 
   /// \brief Parse the current attribute as an unsigned integer value
   ///
@@ -298,6 +333,17 @@ public:
   /// \param val is the string to encode
   virtual void writeString(const AttributeId &attribId,const string &val)=0;
 
+  /// \brief Write an annotated string, using an indexed attribute, into the encoding
+  ///
+  /// Multiple attributes with a shared name can be written to the same element by calling this method
+  /// multiple times with a different \b index value. The encoding will use attribute ids up to the base id
+  /// plus the maximum index passed in.  Implementors must be careful to not use other attributes with ids
+  /// bigger than the base id within the element taking the indexed attribute.
+  /// \param attribId is the shared AttributeId
+  /// \param index is the unique index to associated with the string
+  /// \param val is the string to encode
+  virtual void writeStringIndexed(const AttributeId &attribId,uint4 index,const string &val)=0;
+
   /// \brief Write an address space reference into the encoding
   ///
   /// The address space is associated with the given AttributeId annotation and the current open element.
@@ -333,10 +379,13 @@ public:
   virtual void closeElementSkipping(uint4 id);
   virtual void rewindAttributes(void);
   virtual uint4 getNextAttributeId(void);
+  virtual uint4 getIndexedAttributeId(const AttributeId &attribId);
   virtual bool readBool(void);
   virtual bool readBool(const AttributeId &attribId);
   virtual intb readSignedInteger(void);
   virtual intb readSignedInteger(const AttributeId &attribId);
+  virtual intb readSignedIntegerExpectString(const string &expect,intb expectval);
+  virtual intb readSignedIntegerExpectString(const AttributeId &attribId,const string &expect,intb expectval);
   virtual uintb readUnsignedInteger(void);
   virtual uintb readUnsignedInteger(const AttributeId &attribId);
   virtual string readString(void);
@@ -361,6 +410,7 @@ public:
   virtual void writeSignedInteger(const AttributeId &attribId,intb val);
   virtual void writeUnsignedInteger(const AttributeId &attribId,uintb val);
   virtual void writeString(const AttributeId &attribId,const string &val);
+  virtual void writeStringIndexed(const AttributeId &attribId,uint4 index,const string &val);
   virtual void writeSpace(const AttributeId &attribId,const AddrSpace *spc);
 };
 
@@ -466,10 +516,13 @@ public:
   virtual void closeElementSkipping(uint4 id);
   virtual void rewindAttributes(void);
   virtual uint4 getNextAttributeId(void);
+  virtual uint4 getIndexedAttributeId(const AttributeId &attribId);
   virtual bool readBool(void);
   virtual bool readBool(const AttributeId &attribId);
   virtual intb readSignedInteger(void);
   virtual intb readSignedInteger(const AttributeId &attribId);
+  virtual intb readSignedIntegerExpectString(const string &expect,intb expectval);
+  virtual intb readSignedIntegerExpectString(const AttributeId &attribId,const string &expect,intb expectval);
   virtual uintb readUnsignedInteger(void);
   virtual uintb readUnsignedInteger(const AttributeId &attribId);
   virtual string readString(void);
@@ -493,6 +546,7 @@ public:
   virtual void writeSignedInteger(const AttributeId &attribId,intb val);
   virtual void writeUnsignedInteger(const AttributeId &attribId,uintb val);
   virtual void writeString(const AttributeId &attribId,const string &val);
+  virtual void writeStringIndexed(const AttributeId &attribId,uint4 index,const string &val);
   virtual void writeSpace(const AttributeId &attribId,const AddrSpace *spc);
 };
 
@@ -621,6 +675,7 @@ extern AttributeId ATTRIB_TYPELOCK;	///< Marshaling attribute "typelock"
 extern AttributeId ATTRIB_VAL;		///< Marshaling attribute "val"
 extern AttributeId ATTRIB_VALUE;	///< Marshaling attribute "value"
 extern AttributeId ATTRIB_WORDSIZE;	///< Marshaling attribute "wordsize"
+extern AttributeId ATTRIB_STORAGE;	///< Marshaling attribute "storage"
 
 extern ElementId ELEM_DATA;		///< Marshaling element \<data>
 extern ElementId ELEM_INPUT;		///< Marshaling element \<input>
@@ -633,4 +688,5 @@ extern ElementId ELEM_VAL;		///< Marshaling element \<val>
 extern ElementId ELEM_VALUE;		///< Marshaling element \<value>
 extern ElementId ELEM_VOID;		///< Marshaling element \<void>
 
+} // End namespace ghidra
 #endif

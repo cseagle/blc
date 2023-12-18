@@ -195,6 +195,7 @@
     <ClCompile Include="marshal.cc" />
     <ClCompile Include="memstate.cc" />
     <ClCompile Include="merge.cc" />
+    <ClCompile Include="modelrules.cc" />
     <ClCompile Include="op.cc" />
     <ClCompile Include="opbehavior.cc" />
     <ClCompile Include="opcodes.cc" />
@@ -321,6 +322,7 @@
   <ItemGroup>
     <ClInclude Include="ast.hh" />
     <ClInclude Include="marshal.hh" />
+    <ClInclude Include="modelrules.hh" />
     <ClInclude Include="transform.hh" />
     <ClInclude Include="xml_tree.hh" />
   </ItemGroup>

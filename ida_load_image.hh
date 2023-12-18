@@ -30,6 +30,8 @@
 #include "loadimage.hh"
 #include "ida_arch.hh"
 
+using ghidra::LoadImage;
+
 using std::string;
 
 /// \brief An implementation of the LoadImage interface using IDA as the back-end

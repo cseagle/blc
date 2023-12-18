@@ -28,6 +28,7 @@ using std::iostream;
 using std::ifstream;
 using std::ostringstream;
 using std::istringstream;
+using std::stringstream;
 using std::map;
 
 #include "libdecomp.hh"
@@ -41,6 +42,17 @@ using std::map;
 #include "ast.hh"
 
 //#define DEBUG 1
+
+using ghidra::List;
+using ghidra::TrackedSet;
+using ghidra::AddrSpace;
+using ghidra::TrackedContext;
+using ghidra::DecoderError;
+using ghidra::LowlevelError;
+using ghidra::PcodeOpTree;
+using ghidra::Funcdata;
+using ghidra::SeqNum;
+using ghidra::PcodeOp;
 
 stringstream *err_stream;
 
@@ -176,7 +188,7 @@ void mips_setup(uint64_t start, uint64_t end) {
 
 bool ghidra_init(void) {
 
-    startDecompilerLibrary(ghidra_dir.c_str());
+    ghidra::startDecompilerLibrary(ghidra_dir.c_str());
 
     err_stream = new stringstream();
 
@@ -232,7 +244,7 @@ bool ghidra_init(void) {
 }
 
 void ghidra_term(void) {
-    shutdownDecompilerLibrary();
+    ghidra::shutdownDecompilerLibrary();
 
 //    GhidraCapability::shutDown();
     delete err_stream;

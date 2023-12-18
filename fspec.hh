@@ -16,12 +16,15 @@
 /// \file fspec.hh
 /// \brief Definitions for specifying functions prototypes
 
-#ifndef __CPUI_FSPEC__
-#define __CPUI_FSPEC__
+#ifndef __FSPEC_HH__
+#define __FSPEC_HH__
 
-#include "op.hh"
+#include "modelrules.hh"
 #include "rangemap.hh"
 
+namespace ghidra {
+
+class ProtoModel;
 class JoinRecord;
 
 extern AttributeId ATTRIB_CUSTOM;	///< Marshaling attribute "custom"
@@ -100,9 +103,8 @@ public:
   };
 private:
   uint4 flags;			///< Boolean properties of the parameter
-  type_metatype type;		///< Data-type class that this entry must match
-  int4 group;			///< Group of (mutually exclusive) entries that this entry belongs to
-  int4 groupsize;		///< The number of consecutive groups taken by the entry
+  type_class type;		///< Data-type storage class that this entry must match
+  vector<int4> groupSet;	///< Group(s) \b this entry belongs to
   AddrSpace *spaceid;		///< Address space containing the range
   uintb addressbase;		///< Starting offset of the range
   int4 size;			///< Size of the range in bytes
@@ -117,14 +119,15 @@ private:
   /// \brief Is the logical value left-justified within its container
   bool isLeftJustified(void) const { return (((flags&force_left_justify)!=0)||(!spaceid->isBigEndian())); }
 public:
-  ParamEntry(int4 grp) { group=grp; }			///< Constructor for use with decode
-  int4 getGroup(void) const { return group; }		///< Get the group id \b this belongs to
-  int4 getGroupSize(void) const { return groupsize; }	///< Get the number of groups occupied by \b this
+  ParamEntry(int4 grp) { groupSet.push_back(grp); }	///< Constructor for use with decode
+  int4 getGroup(void) const { return groupSet[0]; }	///< Get the group id \b this belongs to
+  const vector<int4> &getAllGroups(void) const { return groupSet; }	///< Get all group numbers \b this overlaps
+  bool groupOverlap(const ParamEntry &op2) const;	///< Check if \b this and op2 occupy any of the same groups
   int4 getSize(void) const { return size; }		///< Get the size of the memory range in bytes.
   int4 getMinSize(void) const { return minsize; }	///< Get the minimum size of a logical value contained in \b this
   int4 getAlign(void) const { return alignment; }	///< Get the alignment of \b this entry
   JoinRecord *getJoinRecord(void) const { return joinrec; }	///< Get record describing joined pieces (or null if only 1 piece)
-  type_metatype getType(void) const { return type; }	///< Get the data-type class associated with \b this
+  type_class getType(void) const { return type; }	///< Get the data-type class associated with \b this
   bool isExclusion(void) const { return (alignment==0); }	///< Return \b true if this holds a single parameter exclusively
   bool isReverseStack(void) const { return ((flags & reverse_stack)!=0); }	///< Return \b true if parameters are allocated in reverse order
   bool isGrouped(void) const { return ((flags & is_grouped)!=0); }	///< Return \b true if \b this is grouped with other entries
@@ -139,7 +142,7 @@ public:
   int4 getSlot(const Address &addr,int4 skip) const;
   AddrSpace *getSpace(void) const { return spaceid; }	///< Get the address space containing \b this entry
   uintb getBase(void) const { return addressbase; }	///< Get the starting offset of \b this entry
-  Address getAddrBySlot(int4 &slot,int4 sz) const;
+  Address getAddrBySlot(int4 &slot,int4 sz,int4 typeAlign) const;
   void decode(Decoder &decoder,bool normalstack,bool grouped,list<ParamEntry> &curList);
   bool isParamCheckHigh(void) const { return ((flags & extracheck_high)!=0); }	///< Return \b true if there is a high overlap
   bool isParamCheckLow(void) const { return ((flags & extracheck_low)!=0); }	///< Return \b true if there is a low overlap
@@ -284,7 +287,7 @@ class ParamActive {
   bool needsfinalcheck;		///< Should a final pass be made on trials (to take into account control-flow changes)
   bool recoversubcall;		///< True if \b this is being used to recover prototypes of a sub-function call
 public:
-  ParamActive(bool recoversub);	///< Constructor an empty container
+  ParamActive(bool recoversub);	///< Construct an empty container
   void clear(void);		///< Reset to an empty container
   void registerTrial(const Address &addr,int4 sz);		///< Add a new trial to the container
   int4 getNumTrials(void) const { return trial.size(); }	///< Get the number of trials in \b this container
@@ -360,6 +363,17 @@ struct ParameterPieces {
   Address addr;			///< Storage address of the parameter
   Datatype *type;		///< The datatype of the parameter
   uint4 flags;			///< additional attributes of the parameter
+  void swapMarkup(ParameterPieces &op);	///< Swap data-type markup between \b this and another parameter
+};
+
+/// \brief Raw components of a function prototype (obtained from parsing source code)
+struct PrototypePieces {
+  ProtoModel *model;		///< (Optional) model on which prototype is based
+  string name;			///< Identifier (function name) associated with prototype
+  Datatype *outtype;		///< Return data-type
+  vector<Datatype *> intypes;	///< Input data-types
+  vector<string> innames;	///< Identifiers for input types
+  int4 firstVarArgSlot;		///< First position of a variable argument, or -1 if not varargs
 };
 
 /// \brief Description of the indirect effect a sub-function has on a memory range
@@ -419,7 +433,7 @@ public:
   /// \param proto is the ordered list of data-types
   /// \param typefactory is the TypeFactory (for constructing pointers)
   /// \param res will contain the storage locations corresponding to the datatypes
-  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const=0;
+  virtual void assignMap(const PrototypePieces &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const=0;
 
   /// \brief Given an unordered list of storage locations, calculate a function prototype
   ///
@@ -518,6 +532,14 @@ public:
   /// \return the stack address space, if \b this models parameters passed on the stack, NULL otherwise
   virtual AddrSpace *getSpacebase(void) const=0;
 
+  /// \brief Return \b true if \b this pointer occurs before an indirect return pointer
+  ///
+  /// The \e automatic parameters: \b this parameter and the \e hidden return value pointer both
+  /// tend to be allocated from the initial general purpose registers reserved for parameter passing.
+  /// This method returns \b true if the \b this parameter is allocated first.
+  /// \return \b false if the \e hidden return value pointer is allocated first
+  virtual bool isThisBeforeRetPointer(void) const=0;
+
   /// \brief For a given address space, collect all the parameter locations within that space
   ///
   /// Pass back the memory ranges for any parameter that is stored in the given address space.
@@ -556,19 +578,18 @@ class ParamListStandard : public ParamList {
 protected:
   int4 numgroup;			///< Number of \e groups in this parameter convention
   int4 maxdelay;			///< Maximum heritage delay across all parameters
-  int4 pointermax; 			///< If non-zero, maximum size of a data-type before converting to a pointer
   bool thisbeforeret;			///< Does a \b this parameter come before a hidden return parameter
-  int4 resourceTwoStart;		///< If there are two resource sections, the group of the first entry in the second section
+  vector<int4> resourceStart;		///< The starting group for each resource section
   list<ParamEntry> entry;		///< The ordered list of parameter entries
   vector<ParamEntryResolver *> resolverMap;	///< Map from space id to resolver
+  list<ModelRule> modelRules;		///< Rules to apply when assigning addresses
   AddrSpace *spacebase;			///< Address space containing relative offset parameters
   const ParamEntry *findEntry(const Address &loc,int4 size) const;	///< Given storage location find matching ParamEntry
-  Address assignAddress(const Datatype *tp,vector<int4> &status) const;	///< Assign storage for given parameter data-type
-  const ParamEntry *selectUnreferenceEntry(int4 grp,type_metatype prefType) const;	///< Select entry to fill an unreferenced param
+  const ParamEntry *selectUnreferenceEntry(int4 grp,type_class prefType) const;	///< Select entry to fill an unreferenced param
   void buildTrialMap(ParamActive *active) const;	///< Build map from parameter trials to model ParamEntrys
-  void separateSections(ParamActive *active,int4 &oneStart,int4 &oneStop,int4 &twoStart,int4 &twoStop) const;
-  static void markGroupNoUse(ParamActive *active,int4 groupUpper,int4 groupStart,int4 index);
-  static void markBestInactive(ParamActive *active,int4 group,int4 groupStart,type_metatype prefType);
+  void separateSections(ParamActive *active,vector<int4> &trialStart) const;
+  static void markGroupNoUse(ParamActive *active,int4 activeTrial,int4 trialStart);
+  static void markBestInactive(ParamActive *active,int4 group,int4 groupStart,type_class prefType);
   static void forceExclusionGroup(ParamActive *active);
   static void forceNoUse(ParamActive *active,int4 start,int4 stop);
   static void forceInactiveChain(ParamActive *active,int4 maxchain,int4 start,int4 stop,int4 groupstart);
@@ -584,8 +605,12 @@ public:
   ParamListStandard(const ParamListStandard &op2);			///< Copy constructor
   virtual ~ParamListStandard(void);
   const list<ParamEntry> &getEntry(void) const { return entry; }	///< Get the list of parameter entries
+  uint4 assignAddressFallback(type_class resource,Datatype *tp,bool matchExact,vector<int4> &status,
+			      ParameterPieces &param) const;
+  uint4 assignAddress(Datatype *dt,const PrototypePieces &proto,int4 pos,TypeFactory &tlst,
+		      vector<int4> &status,ParameterPieces &res) const;
   virtual uint4 getType(void) const { return p_standard; }
-  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
+  virtual void assignMap(const PrototypePieces &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
   virtual void fillinMap(ParamActive *active) const;
   virtual bool checkJoin(const Address &hiaddr,int4 hisize,const Address &loaddr,int4 losize) const;
   virtual bool checkSplit(const Address &loc,int4 size,int4 splitpoint) const;
@@ -596,9 +621,29 @@ public:
   virtual bool unjustifiedContainer(const Address &loc,int4 size,VarnodeData &res) const;
   virtual OpCode assumedExtension(const Address &addr,int4 size,VarnodeData &res) const;
   virtual AddrSpace *getSpacebase(void) const { return spacebase; }
+  virtual bool isThisBeforeRetPointer(void) const { return thisbeforeret; }
   virtual void getRangeList(AddrSpace *spc,RangeList &res) const;
   virtual int4 getMaxDelay(void) const { return maxdelay; }
   virtual void decode(Decoder &decoder,vector<EffectRecord> &effectlist,bool normalstack);
+  virtual ParamList *clone(void) const;
+};
+
+/// \brief A standard model for returning output parameters from a function
+///
+/// This has a more involved assignment strategy than its parent class.
+/// Entries in the resource list are treated as a \e group, meaning that only one can
+/// fit the desired storage size and type attributes of the return value. If no entry
+/// fits, the return value is converted to a pointer data-type, storage allocation is
+/// attempted again, and the return value is marked as a \e hidden return parameter
+/// to inform the input model.
+class ParamListStandardOut : public ParamListStandard {
+public:
+  ParamListStandardOut(void) : ParamListStandard() {}	///< Constructor for use with decode()
+  ParamListStandardOut(const ParamListStandardOut &op2) : ParamListStandard(op2) {}	///< Copy constructor
+  virtual uint4 getType(void) const { return p_standard_out; }
+  virtual void assignMap(const PrototypePieces &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
+  virtual void fillinMap(ParamActive *active) const;
+  virtual bool possibleParam(const Address &loc,int4 size) const;
   virtual ParamList *clone(void) const;
 };
 
@@ -609,14 +654,12 @@ public:
 /// for selecting a storage location. When assigning based on data-type (assignMap), the first list
 /// entry that fits is chosen.  When assigning from a set of actively used locations (fillinMap),
 /// this class chooses the location that is the closest fitting match to an entry in the resource list.
-class ParamListRegisterOut : public ParamListStandard {
+class ParamListRegisterOut : public ParamListStandardOut {
 public:
-  ParamListRegisterOut(void) : ParamListStandard() {}		///< Constructor
-  ParamListRegisterOut(const ParamListRegisterOut &op2) : ParamListStandard(op2) {}	///< Copy constructor
+  ParamListRegisterOut(void) : ParamListStandardOut() {}		///< Constructor
+  ParamListRegisterOut(const ParamListRegisterOut &op2) : ParamListStandardOut(op2) {}	///< Copy constructor
   virtual uint4 getType(void) const { return p_register_out; }
-  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
-  virtual void fillinMap(ParamActive *active) const;
-  virtual bool possibleParam(const Address &loc,int4 size) const;
+  virtual void assignMap(const PrototypePieces &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
   virtual ParamList *clone(void) const;
 };
 
@@ -636,24 +679,6 @@ public:
   virtual ParamList *clone(void) const;
 };
 
-/// \brief A standard model for returning output parameters from a function
-///
-/// This has a more involved assignment strategy than its parent class.
-/// Entries in the resource list are treated as a \e group, meaning that only one can
-/// fit the desired storage size and type attributes of the return value. If no entry
-/// fits, the return value is converted to a pointer data-type, storage allocation is
-/// attempted again, and the return value is marked as a \e hidden return parameter
-/// to inform the input model.
-class ParamListStandardOut : public ParamListRegisterOut {
-public:
-  ParamListStandardOut(void) : ParamListRegisterOut() {}	///< Constructor for use with decode()
-  ParamListStandardOut(const ParamListStandardOut &op2) : ParamListRegisterOut(op2) {}	///< Copy constructor
-  virtual uint4 getType(void) const { return p_standard_out; }
-  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const;
-  virtual void decode(Decoder &decoder,vector<EffectRecord> &effectlist,bool normalstack);
-  virtual ParamList *clone(void) const;
-};
-
 /// \brief A union of other input parameter passing models
 ///
 /// This model is viewed as a union of a constituent set of resource lists.
@@ -669,7 +694,7 @@ public:
   void foldIn(const ParamListStandard &op2);				///< Add another model to the union
   void finalize(void) { populateResolver(); }				///< Fold-ins are finished, finalize \b this
   virtual uint4 getType(void) const { return p_merged; }
-  virtual void assignMap(const vector<Datatype *> &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const {
+  virtual void assignMap(const PrototypePieces &proto,TypeFactory &typefactory,vector<ParameterPieces> &res) const {
     throw LowlevelError("Cannot assign prototype before model has been resolved"); }
   virtual void fillinMap(ParamActive *active) const {
     throw LowlevelError("Cannot determine prototype before model has been resolved"); }
@@ -750,7 +775,7 @@ public:
   void deriveOutputMap(ParamActive *active) const {
     output->fillinMap(active); }
 
-  void assignParameterStorage(const vector<Datatype *> &typelist,vector<ParameterPieces> &res,bool ignoreOutputError);
+  void assignParameterStorage(const PrototypePieces &proto,vector<ParameterPieces> &res,bool ignoreOutputError);
 
   /// \brief Check if the given two input storage locations can represent a single logical parameter
   ///
@@ -947,8 +972,15 @@ public:
   /// \return the maximum number of passes across all output parameters in \b this model
   int4 getMaxOutputDelay(void) const { return output->getMaxDelay(); }
 
-  virtual bool isMerged(void) const { return false; }	///< Is \b this a merged prototype model
-  virtual bool isUnknown(void) const { return false; }	///< Is \b this an unrecognized prototype model
+  /// \brief Is \b this a merged prototype model
+  ///
+  /// \return \b true if \b this is a merged form of multiple independent prototype models
+  virtual bool isMerged(void) const { return false; }
+
+  /// \brief If \b this an unrecognized prototype model
+  ///
+  /// \return \b true if \b this is a placeholder for an unrecognized prototype model name
+  virtual bool isUnknown(void) const { return false; }
   virtual void decode(Decoder &decoder);		///< Restore \b this model from a stream
   static uint4 lookupEffect(const vector<EffectRecord> &efflist,const Address &addr,int4 size);
   static int4 lookupRecord(const vector<EffectRecord> &efflist,int4 listSize,const Address &addr,int4 size);
@@ -963,7 +995,8 @@ public:
 class UnknownProtoModel : public ProtoModel {
   ProtoModel *placeholderModel;		///< The model whose behavior \b this adopts as a behavior placeholder
 public:
-  UnknownProtoModel(const string &nm,ProtoModel *placeHold) : ProtoModel(nm,*placeHold) { placeholderModel = placeHold; }
+  UnknownProtoModel(const string &nm,ProtoModel *placeHold) : ProtoModel(nm,*placeHold) {
+    placeholderModel = placeHold; }	///< Constructor
   ProtoModel *getPlaceholderModel(void) const { return placeholderModel; }	///< Retrieve the placeholder model
   virtual bool isUnknown(void) const { return true; }
 };
@@ -1266,16 +1299,6 @@ public:
   virtual void decode(Decoder &decoder,ProtoModel *model);
 };
 
-/// \brief Raw components of a function prototype (obtained from parsing source code)
-struct PrototypePieces {
-  ProtoModel *model;		///< (Optional) model on which prototype is based
-  string name;			///< Identifier (function name) associated with prototype
-  Datatype *outtype;		///< Return data-type
-  vector<Datatype *> intypes;	///< Input data-types
-  vector<string> innames;	///< Identifiers for input types
-  bool dotdotdot;		///< True if prototype takes variable arguments
-};
-
 /// \brief A \b function \b prototype
 ///
 /// A description of the parameters and return value for a specific function.
@@ -1474,11 +1497,13 @@ public:
   void updateInputNoTypes(Funcdata &data,const vector<Varnode *> &triallist,ParamActive *activeinput);
   void updateOutputTypes(const vector<Varnode *> &triallist);
   void updateOutputNoTypes(const vector<Varnode *> &triallist,TypeFactory *factory);
-  void updateAllTypes(const vector<string> &namelist,const vector<Datatype *> &typelist,bool dtdtdt);
+  void updateAllTypes(const PrototypePieces &proto);
   ProtoParameter *getParam(int4 i) const { return store->getInput(i); }	///< Get the i-th input parameter
+  void setParam(int4 i,const string &name,const ParameterPieces &piece) { store->setInput(i, name, piece); }	///< Set parameter storage directly
   void removeParam(int4 i) { store->clearInput(i); }		///< Remove the i-th input parameter
   int4 numParams(void) const { return store->getNumInputs(); }	///< Get the number of input parameters
   ProtoParameter *getOutput(void) const { return store->getOutput(); }	///< Get the return value
+  void setOutput(const ParameterPieces &piece) { store->setOutput(piece); }	///< Set return value storage directly
   Datatype *getOutputType(void) const { return store->getOutput()->getType(); }	///< Get the return value data-type
   const RangeList &getLocalRange(void) const { return model->getLocalRange(); }	///< Get the range of potential local stack variables
   const RangeList &getParamRange(void) const { return model->getParamRange(); }	///< Get the range of potential stack parameters
@@ -1598,15 +1623,20 @@ class FuncCallSpecs : public FuncProto {
   bool isinputactive; 		///< Are we actively trying to recover input parameters
   bool isoutputactive;		///< Are we actively trying to recover output parameters
   bool isbadjumptable;		///< Was the call originally a jump-table we couldn't recover
+  bool isstackoutputlock;	///< Do we have a locked output on the stack
   Varnode *getSpacebaseRelative(void) const;	///< Get the active stack-pointer Varnode at \b this call site
   Varnode *buildParam(Funcdata &data,Varnode *vn,ProtoParameter *param,Varnode *stackref);
   int4 transferLockedInputParam(ProtoParameter *param);
   PcodeOp *transferLockedOutputParam(ProtoParameter *param);
-  bool transferLockedInput(vector<Varnode *> &newinput);
-  bool transferLockedOutput(Varnode *&newoutput);
+  bool transferLockedInput(vector<Varnode *> &newinput,const FuncProto &source);
+  bool transferLockedOutput(Varnode *&newoutput,const FuncProto &source);
   void commitNewInputs(Funcdata &data,vector<Varnode *> &newinput);
   void commitNewOutputs(Funcdata &data,Varnode *newout);
   void collectOutputTrialVarnodes(vector<Varnode *> &trialvn);
+  void setStackPlaceholderSlot(int4 slot) { stackPlaceholderSlot = slot;
+      if (isinputactive) activeinput.setPlaceholderSlot(); }	///< Set the slot of the stack-pointer placeholder
+  void clearStackPlaceholderSlot(void) {
+    stackPlaceholderSlot = -1; if (isinputactive) activeinput.freePlaceholderSlot(); }	///< Release the stack-pointer placeholder
 public:
   enum {
     offset_unknown = 0xBADBEEF					///< "Magic" stack offset indicating the offset is unknown
@@ -1626,10 +1656,6 @@ public:
   int4 getParamshift(void) const { return paramshift; }		///< Get the parameter shift for this call site
   int4 getMatchCallCount(void) const { return matchCallCount; }	///< Get the number of calls the caller makes to \b this sub-function
   int4 getStackPlaceholderSlot(void) const { return stackPlaceholderSlot; }	///< Get the slot of the stack-pointer placeholder
-  void setStackPlaceholderSlot(int4 slot) { stackPlaceholderSlot = slot;
-      if (isinputactive) activeinput.setPlaceholderSlot(); }	///< Set the slot of the stack-pointer placeholder
-  void clearStackPlaceholderSlot(void) {
-    stackPlaceholderSlot = -1; if (isinputactive) activeinput.freePlaceholderSlot(); }	///< Release the stack-pointer placeholder
 
   void initActiveInput(void);			 ///< Turn on analysis recovering input parameters
   void clearActiveInput(void) { isinputactive = false; }	///< Turn off analysis recovering input parameters
@@ -1639,6 +1665,8 @@ public:
   bool isOutputActive(void) const { return isoutputactive; }	///< Return \b true if return value recovery analysis is active
   void setBadJumpTable(bool val) { isbadjumptable = val; }	///< Toggle whether \b call site looked like an indirect jump
   bool isBadJumpTable(void) const { return isbadjumptable; }	///< Return \b true if \b this call site looked like an indirect jump
+  void setStackOutputLock(bool val) { isstackoutputlock = val; }	///< Toggle whether output is locked and on the stack
+  bool isStackOutputLock(void) const { return isstackoutputlock; }	///< Return \b true if return value is locked and on the stack
   ParamActive *getActiveInput(void) { return &activeinput; }	///< Get the analysis object for input parameter recovery
   ParamActive *getActiveOutput(void) { return &activeoutput; }	///< Get the analysis object for return value recovery
 
@@ -1648,6 +1676,7 @@ public:
   void deindirect(Funcdata &data,Funcdata *newfd);
   void forceSet(Funcdata &data,const FuncProto &fp);
   void insertPcode(Funcdata &data);
+  void createPlaceholder(Funcdata &data,AddrSpace *spacebase);
   void resolveSpacebaseRelative(Funcdata &data,Varnode *phvn);
   void abortSpacebaseRelative(Funcdata &data);
   void finalInputCheck(void);
@@ -1716,4 +1745,5 @@ inline bool EffectRecord::operator!=(const EffectRecord &op2) const
   return (type != op2.type);
 }
 
+} // End namespace ghidra
 #endif

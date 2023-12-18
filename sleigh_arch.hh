@@ -16,12 +16,14 @@
 /// \file sleigh_arch.hh
 /// \brief Architecture objects that use a Translate object derived from Sleigh
 
-#ifndef __SLEIGH_ARCH__
-#define __SLEIGH_ARCH__
+#ifndef __SLEIGH_ARCH_HH__
+#define __SLEIGH_ARCH_HH__
 
 #include "filemanage.hh"
 #include "architecture.hh"
 #include "sleigh.hh"
+
+namespace ghidra {
 
 extern AttributeId ATTRIB_DEPRECATED;	///< Marshaling attribute "deprecated"
 extern AttributeId ATTRIB_ENDIAN;	///< Marshaling attribute "endian"
@@ -118,6 +120,7 @@ protected:
   virtual Translate *buildTranslator(DocumentStorage &store);
   virtual PcodeInjectLibrary *buildPcodeInjectLibrary(void);
   virtual void buildTypegrp(DocumentStorage &store);
+  virtual void buildCoreTypes(DocumentStorage &store);
   virtual void buildCommentDB(DocumentStorage &store);
   virtual void buildStringManager(DocumentStorage &store);
   virtual void buildConstantPool(DocumentStorage &store);
@@ -146,4 +149,5 @@ public:
   static FileManage specpaths;					///< Known directories that contain .ldefs files.
 };
 
+} // End namespace ghidra
 #endif

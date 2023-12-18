@@ -17,6 +17,8 @@
 #include "block.hh"
 #include "funcdata.hh"
 
+namespace ghidra {
+
 AttributeId ATTRIB_ALTINDEX = AttributeId("altindex",75);
 AttributeId ATTRIB_DEPTH = AttributeId("depth",76);
 AttributeId ATTRIB_END = AttributeId("end",77);
@@ -405,9 +407,15 @@ bool FlowBlock::restrictedByConditional(const FlowBlock *cond) const
 {
   if (sizeIn() == 1) return true;	// Its impossible for any path to come through sibling to this
   if (getImmedDom() != cond) return false;	// This is not dominated by conditional block at all
+  bool seenCond = false;
   for(int4 i=0;i<sizeIn();++i) {
     const FlowBlock *inBlock = getIn(i);
-    if (inBlock == cond) continue;	// The unique edge from cond to this
+    if (inBlock == cond) {
+      if (seenCond)
+	return false;			// Coming in from cond block on multiple direct edges
+      seenCond = true;
+      continue;
+    }
     while(inBlock != this) {
       if (inBlock == cond) return false;	// Must have come through sibling
       inBlock = inBlock->getImmedDom();
@@ -1256,6 +1264,14 @@ void BlockGraph::printRaw(ostream &s) const
   s << endl;
   for(iter=list.begin();iter!=list.end();++iter)
     (*iter)->printRaw(s);
+}
+
+PcodeOp *BlockGraph::firstOp(void) const
+
+{
+  if (getSize() == 0)
+    return (PcodeOp *)0;
+  return getBlock(0)->firstOp();
 }
 
 FlowBlock *BlockGraph::nextFlowAfter(const FlowBlock *bl) const
@@ -2253,6 +2269,13 @@ Address BlockBasic::getStop(void) const
   return range->getLastAddr();
 }
 
+PcodeOp *BlockBasic::firstOp(void) const
+
+{
+  if (op.empty()) return (PcodeOp *)0;
+  return (PcodeOp *)op.front();
+}
+
 PcodeOp *BlockBasic::lastOp(void) const
 
 {
@@ -2614,6 +2637,69 @@ bool BlockBasic::noInterveningStatement(PcodeOp *first,int4 path,PcodeOp *last)
     curbl = (BlockBasic *)curbl->getOut(0);
   }
   return false;
+}
+
+/// If there exists a CPUI_MULTIEQUAL PcodeOp in \b this basic block that takes the given exact list of Varnodes
+/// as its inputs, return that PcodeOp. Otherwise return null.
+/// \param varArray is the exact list of Varnodes
+/// \return the MULTIEQUAL or null
+PcodeOp *BlockBasic::findMultiequal(const vector<Varnode *> &varArray)
+
+{
+  Varnode *vn = varArray[0];
+  PcodeOp *op;
+  list<PcodeOp *>::const_iterator iter = vn->beginDescend();
+  for(;;) {
+    op = *iter;
+    if (op->code() == CPUI_MULTIEQUAL && op->getParent() == this)
+      break;
+    ++iter;
+    if (iter == vn->endDescend())
+      return (PcodeOp *)0;
+  }
+  for(int4 i=0;i<op->numInput();++i) {
+    if (op->getIn(i) != varArray[i])
+      return (PcodeOp *)0;
+  }
+  return op;
+}
+
+/// Each Varnode must be defined by a PcodeOp with the same OpCode.  The Varnode, within the array, is replaced
+/// with the input Varnode in the indicated slot.
+/// \param varArray is the given array of Varnodes
+/// \param slot is the indicated slot
+/// \return \b true if all the Varnodes are defined in the same way
+bool BlockBasic::liftVerifyUnroll(vector<Varnode *> &varArray,int4 slot)
+
+{
+  OpCode opc;
+  Varnode *cvn;
+  Varnode *vn = varArray[0];
+  if (!vn->isWritten()) return false;
+  PcodeOp *op = vn->getDef();
+  opc = op->code();
+  if (op->numInput() == 2) {
+    cvn = op->getIn(1-slot);
+    if (!cvn->isConstant()) return false;
+  }
+  else
+    cvn = (Varnode *)0;
+  varArray[0] = op->getIn(slot);
+  for(int4 i=1;i<varArray.size();++i) {
+    vn = varArray[i];
+    if (!vn->isWritten()) return false;
+    op = vn->getDef();
+    if (op->code() != opc) return false;
+
+    if (cvn != (Varnode *)0) {
+      Varnode *cvn2 = op->getIn(1-slot);
+      if (!cvn2->isConstant()) return false;
+      if (cvn->getSize() != cvn2->getSize()) return false;
+      if (cvn->getOffset() != cvn2->getOffset()) return false;
+    }
+    varArray[i] = op->getIn(slot);
+  }
+  return true;
 }
 
 void BlockCopy::printHeader(ostream &s) const
@@ -3503,3 +3589,5 @@ FlowBlock *BlockMap::createBlock(const string &name)
   sortlist.push_back(bl);
   return bl;
 }
+
+} // End namespace ghidra

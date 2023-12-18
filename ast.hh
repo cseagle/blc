@@ -23,10 +23,16 @@
 #include <string>
 #include <vector>
 
-class Element;
+namespace ghidra {
+
+    class Element;
+
+}
 
 using std::string;
 using std::vector;
+
+using ghidra::Element;
 
 //A very crude AST for representing Ghidra generated
 //decompilations

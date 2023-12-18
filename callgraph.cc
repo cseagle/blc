@@ -16,6 +16,8 @@
 #include "callgraph.hh"
 #include "funcdata.hh"
 
+namespace ghidra {
+
 ElementId ELEM_CALLGRAPH = ElementId("callgraph",226);
 ElementId ELEM_NODE = ElementId("node",227);
 
@@ -211,7 +213,7 @@ CallGraphNode *CallGraph::addNode(Funcdata *f)
     throw LowlevelError("Functions with duplicate entry points: "+f->getName()+" "+node.getFuncdata()->getName());
 
   node.entryaddr = f->getAddress();
-  node.name = f->getName();
+  node.name = f->getDisplayName();
   node.fd = f;
   return &node;
 }
@@ -463,3 +465,4 @@ void CallGraph::decoder(Decoder &decoder)
   decoder.closeElement(elemId);
 }
 
+} // End namespace ghidra
